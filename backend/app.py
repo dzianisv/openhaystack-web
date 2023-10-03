@@ -2,6 +2,8 @@
 
 from sanic import Sanic
 from sanic.response import json
+from sanic_cors import CORS, cross_origin
+
 from openhaybike.types import BikeTracker
 from openhaybike.locations import get_locations_of_trackers
 import json as jsonlib
@@ -14,12 +16,14 @@ if not icloud_key:
     raise ValueError("ICLOUD_KEY environment variable is not set!")
 
 app = Sanic("tracker_app")
+CORS(app)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stderr))
 
 @app.route("/api/v1/locations", methods=["POST"])
+@cross_origin(app)
 async def get_locations(request):
     trackers = [BikeTracker(
         name=tracker.get("name"),

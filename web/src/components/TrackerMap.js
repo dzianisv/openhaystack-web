@@ -1,9 +1,10 @@
 // src/components/TrackerMap.js
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const TrackerMap = () => {
-    const [locations, setLocations] = useState([]);
+    const [locationsData, setLocationsData] = useState({});
 
     const fetchData = async () => {
         try {
@@ -21,7 +22,8 @@ const TrackerMap = () => {
             }
 
             const data = await response.json();
-            setLocations(data);
+            console.log("TrackerMap", data);
+            setLocationsData(data);
         } catch (error) {
             console.error('There was a problem with the fetch operation:', error.message);
         }
@@ -30,25 +32,30 @@ const TrackerMap = () => {
     useEffect(() => {
         fetchData(); // Fetch data initially
         const intervalId = setInterval(fetchData, 60000); // Fetch data every 60 seconds
-
         return () => clearInterval(intervalId); // Clear the interval when the component is unmounted
     }, []);
 
     return (
-        <MapContainer center={[40.505, -100.09]} zoom={13} >
-
+        <MapContainer center={[47.4397811, -122.1345586]} zoom={13}>
             <TileLayer
                 attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {/* {locations.map((loc) => (
-                <Marker key={loc.id} position={[loc.lat, loc.lng]}>
-                    <Popup>
-                        {loc.name} <br /> {new Date(loc.timestamp).toLocaleString()}
-                    </Popup>
-                </Marker>
-            ))} */}
-            </MapContainer>
+
+            {Object.entries(locationsData).map(([trackerName, locations]) =>
+                locations.map(loc => (
+                    <Marker key={loc.reported_at} position={[loc.lat, loc.lng]}>
+                        <Popup>
+                            {trackerName} <br />
+                            Accuracy: {loc.accuracy} <br />
+                            {new Date(loc.reported_at * 1000).toLocaleString()}
+                            {/* Multiply by 1000 since JavaScript expects timestamps in milliseconds */}
+                        </Popup>
+                    </Marker>
+                ))
+            )}
+
+        </MapContainer>
     );
 };
 
