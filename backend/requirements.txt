@@ -1,0 +1,2 @@
+sanic
+git+https://gitlab.com/eselac/openhaybike.git
