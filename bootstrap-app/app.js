@@ -1,4 +1,4 @@
-const map = L.map('map').setView([51.505, -0.09], 13);
+const map = L.map('map');
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -52,8 +52,13 @@ function drawOnMap(data) {
         const positions = data[tracker];
         const latlngs = positions.map(p => [p.lat, p.lng]);
         L.polyline(latlngs, { color: getRandomColor() }).addTo(map); // different colors for each tracker's path
-        var marker = L.marker([positions[0].lat, positions[0].lng]).addTo(map);
+
+        const pointOfIterest = positions[positions.length - 1];
+
+        var marker = L.marker([pointOfIterest.lat, pointOfIterest.lng]).addTo(map);
         marker.bindPopup(tracker).openPopup();
+        map.setView([pointOfIterest.lat, pointOfIterest.lng], 15);
+        map.setZoomAround([pointOfIterest.lat, pointOfIterest.lng]);
     }
 }
 
