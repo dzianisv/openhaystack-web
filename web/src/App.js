@@ -9,7 +9,7 @@ function App() {
   const [isAddTrackerVisible, setAddTrackerVisible] = useState(false);
 
   return (
-    <div className="App">
+    <div>
       <button onClick={() => setTrackerListVisible(true)}>Trackers</button>
       {isTrackerListVisible && (
         <TrackerListDialog onClose={() => setTrackerListVisible(false)} onAdd={() => setAddTrackerVisible(true)} />

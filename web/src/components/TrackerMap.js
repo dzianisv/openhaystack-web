@@ -36,9 +36,8 @@ const TrackerMap = () => {
     }, []);
 
     return (
-        <MapContainer center={[47.4397811, -122.1345586]} zoom={13}>
+        <MapContainer>
             <TileLayer
-                attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
@@ -49,7 +48,6 @@ const TrackerMap = () => {
                             {trackerName} <br />
                             Accuracy: {loc.accuracy} <br />
                             {new Date(loc.reported_at * 1000).toLocaleString()}
-                            {/* Multiply by 1000 since JavaScript expects timestamps in milliseconds */}
                         </Popup>
                     </Marker>
                 ))
