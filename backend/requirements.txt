@@ -1,2 +1,2 @@
+git+https://gitlab.com/eselac/openhaybike#egg=openhaybike
 sanic
-git+https://gitlab.com/eselac/openhaybike.git
