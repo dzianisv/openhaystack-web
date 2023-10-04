@@ -65,6 +65,20 @@ async function fetchLocations() {
         }
     }
 }
+
+function formatTimestamp(timestamp) {
+    // Extract year, month, day, hour, and minute
+    const d = new Date(timestamp * 1000);
+    const year = d.getFullYear();
+    const month = ('0' + (d.getMonth() + 1)).slice(-2); // Months are 0-based in JS
+    const day = ('0' + d.getDate()).slice(-2);
+    const hour = ('0' + d.getHours()).slice(-2);
+    const minute = ('0' + d.getMinutes()).slice(-2);
+
+    // Construct the formatted string
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
 function drawOnMap(data) {
     for (const tracker in data) {
         if (!data.hasOwnProperty(tracker)) continue; // Check if key belongs to object to avoid prototype chain issues
@@ -73,9 +87,9 @@ function drawOnMap(data) {
         const positions = data[tracker].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
         for (const pos of positions) {       // Create a label with the tracker name and the date-time from the timestamp
-            const date = new Date(pos.timestamp);
+            const timestamp = formatTimestamp(pos.reported_at);
             // Create and add the marker with the custom icon to the map
-            L.marker([pos.lat, pos.lng]).addTo(map).bindPopup(`${tracker}-${date}`).openPopup();
+            L.marker([pos.lat, pos.lng]).addTo(map).bindPopup(`${tracker}-${timestamp}`).openPopup();
         }
     }
 }
