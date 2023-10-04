@@ -2,6 +2,25 @@ const map = L.map('map');
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+// Check if geolocation is available in the browser
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(position) {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+
+        map.setView([userLat, userLng], 15);
+
+        // Add a marker for the current location
+        L.marker([userLat, userLng]).addTo(map).bindPopup('You are here!').openPopup();
+
+        map.setZoomAround([userLat, userLng]);
+    }, function(error) {
+        console.log("Error occurred while fetching location:", error);
+    });
+} else {
+    console.log("Geolocation is not supported by this browser.");
+}
+
 function showDialog() {
     const data = localStorage.getItem('trackers');
     if (data) {
@@ -46,19 +65,18 @@ async function fetchLocations() {
         }
     }
 }
-
 function drawOnMap(data) {
     for (const tracker in data) {
-        const positions = data[tracker];
-        const latlngs = positions.map(p => [p.lat, p.lng]);
-        L.polyline(latlngs, { color: getRandomColor() }).addTo(map); // different colors for each tracker's path
+        if (!data.hasOwnProperty(tracker)) continue; // Check if key belongs to object to avoid prototype chain issues
 
-        const pointOfIterest = positions[positions.length - 1];
+        // Sort positions based on timestamp
+        const positions = data[tracker].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        var marker = L.marker([pointOfIterest.lat, pointOfIterest.lng]).addTo(map);
-        marker.bindPopup(tracker).openPopup();
-        map.setView([pointOfIterest.lat, pointOfIterest.lng], 15);
-        map.setZoomAround([pointOfIterest.lat, pointOfIterest.lng]);
+        for (const pos of positions) {       // Create a label with the tracker name and the date-time from the timestamp
+            const date = new Date(pos.timestamp);
+            // Create and add the marker with the custom icon to the map
+            L.marker([pos.lat, pos.lng]).addTo(map).bindPopup(`${tracker}-${date}`).openPopup();
+        }
     }
 }
 
