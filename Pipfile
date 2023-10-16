@@ -4,10 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pyinstaller = "*"
 eel = "*"
+sanic = "*"
+cryptography = "*"
+pyobjc = "*"
+openhaybike = {path = "./openhaybike"}
+requests = "*"
+sanic-cors = "*"
 
 [dev-packages]
-
-[requires]
-python_version = "3.11"
+pyinstaller = "*"

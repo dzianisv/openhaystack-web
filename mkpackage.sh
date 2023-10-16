@@ -1,3 +1,3 @@
 #!/bin/sh
 
-pipenv run pyinstaller  --onefile --windowed --hidden-import=eel app.py
+pipenv run python3 -m eel app.py web

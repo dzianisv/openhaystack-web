@@ -1,4 +1,5 @@
 const map = L.map('map');
+map.setView([40.6970193,-74.3093232], 1);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -41,7 +42,7 @@ async function saveTrackers() {
 }
 
 class NetworkBackend {
-    async getLocations() {
+    async getLocations(trackers) {
         const response = await fetch('http://localhost:8000/api/v1/locations', {
             method: 'POST',
             headers: {
@@ -65,12 +66,13 @@ class NetworkBackend {
 }
 
 class LocalBackend {
-    async getLocations() {
-        return eel.get_locations()()
+    async getLocations(trackers) {
+        return eel.get_locations(tracker)()
     }
 
     static async isAvailable() {
-        return typeof eel !== 'undefined';
+        return false;
+        // return typeof eel !== 'undefined';
     }
 }
 
@@ -80,7 +82,7 @@ async function fetchLocations() {
 
     if (trackers) {
         try {
-            const backend = await backend.getLocations();
+            const data = await backend.getLocations();
             drawOnMap(data);
         } catch (error) {
             showError('Network error: ' + error.message);

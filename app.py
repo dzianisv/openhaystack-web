@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 import eel
-import backend
+import backend.app
+import threading
+
 
 @eel.expose
 def get_locations(trackers: dict):
-    return backend.get_locations(trackers)
+    locations =  eel.spawn(backend.app.get_locations(trackers))
+    print(locations)
+    return locations
 
-# Initialize eel with web folder
+threading.Thread(target=backend.app.serve).start()
+
 eel.init('web')
-# Start eel with the main.html
 # mode='electron'
-eel.start('index.html')
+eel.start('index.html', port=8765)

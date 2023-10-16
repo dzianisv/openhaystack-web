@@ -22,23 +22,30 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stderr))
 
-@app.route("/api/v1/locations", methods=["POST"])
-@cross_origin(app)
-async def get_locations(request):
+def get_locations(trackers: dict) -> dict:
     trackers = [BikeTracker(
         name=tracker.get("name"),
         key_id=tracker.get("key_id"),
         advertisement_key="",
         private_key=tracker.get("private_key"),
-    ) for tracker in request.json.get("trackers", [])]
+    ) for tracker in trackers]
 
     reports = get_locations_of_trackers(trackers, icloud_key, 24)
     r = {}
     for name, locations in reports.items():
         r[name] = [location.serialize() for location in locations]
+    return r
 
-    logger.debug(r)
+@app.route("/api/v1/locations", methods=["POST"])
+@cross_origin(app)
+async def post_locations(request):
+    r = get_locations(request.json.get("trackers", []))
     return json(r)
 
-if __name__ == "__main__":
+
+def serve():
     app.run(host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    serve()
+
