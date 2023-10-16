@@ -40,25 +40,47 @@ async function saveTrackers() {
     }
 }
 
+class NetworkBackend {
+    async getLocations() {
+        const response = await fetch('http://localhost:8000/api/v1/locations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({trackers: JSON.parse(trackers)}),
+        });
+
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+
+        const data = await response.json();
+        localStorage.setItem('locations', JSON.stringify(data));
+        return data;
+    }
+
+    static async isAvailable() {
+        return true;
+    }
+}
+
+class LocalBackend {
+    async getLocations() {
+        return eel.get_locations()()
+    }
+
+    static async isAvailable() {
+        return typeof eel !== 'undefined';
+    }
+}
+
 async function fetchLocations() {
     const trackers = localStorage.getItem('trackers');
+    const backend = await LocalBackend.isAvailable() ? new LocalBackend() : new NetworkBackend();
+
     if (trackers) {
         try {
-            const response = await fetch('http://localhost:8000/api/v1/locations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({trackers: JSON.parse(trackers)}),
-            });
-
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
-            const data = await response.json();
-            localStorage.setItem('locations', JSON.stringify(data));
-
+            const backend = await backend.getLocations();
             drawOnMap(data);
         } catch (error) {
             showError('Network error: ' + error.message);
