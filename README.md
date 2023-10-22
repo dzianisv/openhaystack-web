@@ -1,3 +1,9 @@
+# intro
+
+this app allows to see locations of the openhaystack trackers
+
+![](img/b4add158-6f94-4d46-90cd-4ab8b51f82df.webp)
+
 # requirements
 
 ```shell
