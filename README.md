@@ -4,6 +4,11 @@ this app allows to see locations of the openhaystack trackers
 
 ![](img/b4add158-6f94-4d46-90cd-4ab8b51f82df.webp)
 
+# how to build a openhaystack tracker
+
+- [Nordic NRF51822 Airtag tutorial](https://dzianisv.github.io/notes/Embedded/Nordic-NRF51822-Airtag.html)
+- [Power-consumtion optimized firmware](https://github.com/acalatrava/openhaystack-firmware)
+
 # requirements
 
 ```shell
