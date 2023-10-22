@@ -1,5 +1,5 @@
 const map = L.map('map');
-map.setView([40.6970193,-74.3093232], 1);
+map.setView([40.6970193,-74.3093232], 5);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -16,10 +16,10 @@ if (navigator.geolocation) {
 
         map.setZoomAround([userLat, userLng]);
     }, function(error) {
-        console.log("Error occurred while fetching location:", error);
+        console.error("Error occurred while fetching location:", error);
     });
 } else {
-    console.log("Geolocation is not supported by this browser.");
+    console.error("Geolocation is not supported by this browser.");
 }
 
 function showDialog() {
@@ -33,6 +33,7 @@ function showDialog() {
 async function saveTrackers() {
     const data = document.getElementById('trackerTextarea').value;
     try {
+        console.log("Saving trackers:", data);
         JSON.parse(data);
         localStorage.setItem('trackers', data);
         $('#trackerModal').modal('hide');
@@ -67,26 +68,30 @@ class NetworkBackend {
 
 class LocalBackend {
     async getLocations(trackers) {
-        return eel.get_locations(tracker)()
+        return eel.get_locations(trackers)()
     }
 
     static async isAvailable() {
-        return false;
-        // return typeof eel !== 'undefined';
+        return typeof eel !== 'undefined';
     }
 }
 
 async function fetchLocations() {
     const trackers = localStorage.getItem('trackers');
     const backend = await LocalBackend.isAvailable() ? new LocalBackend() : new NetworkBackend();
+    console.log("Using backend:", backend.constructor.name);
+    console.log("Tracker list:", trackers);
 
     if (trackers) {
         try {
-            const data = await backend.getLocations();
-            drawOnMap(data);
+            const locationData = await backend.getLocations(JSON.parse(trackers));
+            drawOnMap(locationData);
         } catch (error) {
             showError('Network error: ' + error.message);
+            console.error(error);
         }
+    } else {
+        console.log("No trackers found in local storage");
     }
 }
 
