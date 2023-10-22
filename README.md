@@ -6,14 +6,11 @@ python3 -m pip install pipenv
 ```
 
 
-[Generate](https://dzianisv.github.io/notes/Embedded/Openhaybike.html) and export ICLOUD key
-```shell
-export ICLOUD_KEY=
-```
+[Get] an Icloud key using `pipenv run python3 ./get-icloud-key.py` and export it when start an application.
 
 ```shell
 pipenv install
-pipenv run python3 app.py
+ICLOUD_KEY=... pipenv run python3 app.py
 ```
 
 # Usage

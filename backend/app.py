@@ -11,10 +11,6 @@ import logging
 import sys
 import os
 
-icloud_key = os.environ.get("ICLOUD_KEY")
-if not icloud_key:
-    raise ValueError("ICLOUD_KEY environment variable is not set!")
-
 app = Sanic("tracker_app")
 CORS(app)
 
@@ -22,7 +18,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stderr))
 
-def get_locations(trackers: dict) -> dict:
+def get_locations(trackers: dict, icloud_key: str) -> dict:
     trackers = [BikeTracker(
         name=tracker.get("name"),
         key_id=tracker.get("key_id"),
@@ -39,7 +35,8 @@ def get_locations(trackers: dict) -> dict:
 @app.route("/api/v1/locations", methods=["POST"])
 @cross_origin(app)
 async def post_locations(request):
-    r = get_locations(request.json.get("trackers", []))
+    icloud_key = os.environ.get("ICLOUD_KEY")
+    r = get_locations(request.json.get("trackers", []), icloud_key)
     return json(r)
 
 
