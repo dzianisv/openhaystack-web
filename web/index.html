@@ -7,13 +7,21 @@
     <title>Trackers</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.css"/>
+
+    <style>
+        .tracker:hover {
+            background: rgba(51, 51, 51, 0.30) !important;
+        }
+    </style>
 </head>
 
 <body>
-    <div style="position: relative; height: 500vh;">
+    <div style="position: relative; height: 100vh;">
         <div id="map" style="height: 100%; width: 100%;"></div>
         <button class="btn btn-success" style=" z-index: 1000; position: absolute; top: 10px; right: 10px;"
             onclick="showDialog()">Trackers</button>
+        <div id="tracker_list" style="position: absolute; top: 65px; right: 10px; z-index: 1000; background: rgb(255 255 255 / 75%); padding: 0 10px 10px;"></div>
     </div>
 
     <div class="modal" tabindex="-1" id="trackerModal">
@@ -60,6 +68,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.js" charset="utf-8"></script>
     <script src="app.js"></script>
 </body>
 

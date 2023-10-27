@@ -13,7 +13,9 @@ if (navigator.geolocation) {
         // Add a marker for the current location
         L.marker([userLat, userLng]).addTo(map).bindPopup('You are here!').openPopup();
 
-        map.setZoomAround([userLat, userLng]);
+        // map.setZoomAround([userLat, userLng]);
+
+        L.control.locate().addTo(map);
     }, function(error) {
         console.error("Error occurred while fetching location:", error);
     });
@@ -108,18 +110,60 @@ function formatTimestamp(timestamp) {
 }
 
 function drawOnMap(data) {
+    document.getElementById('tracker_list').innerHTML = '';
+
     for (const tracker in data) {
         if (!data.hasOwnProperty(tracker)) continue; // Check if key belongs to object to avoid prototype chain issues
 
         // Sort positions based on timestamp
-        const positions = data[tracker].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const positions = data[tracker].sort((a, b) => new Date(a.reported_at) - new Date(b.reported_at));
+
+        const iconHtml = getIconHtml();
 
         for (const pos of positions) {       // Create a label with the tracker name and the date-time from the timestamp
             const timestamp = formatTimestamp(pos.reported_at);
             // Create and add the marker with the custom icon to the map
-            L.marker([pos.lat, pos.lng]).addTo(map).bindPopup(`${tracker}-${timestamp}`).openPopup();
+            L.marker([pos.lat, pos.lng], {
+                icon: L.divIcon({
+                    className: 'marker',
+                    html: iconHtml
+                })
+            }).addTo(map).bindPopup(`${tracker}-${timestamp}`).openPopup();
         }
+
+        addTrackerToListOnMap(tracker, iconHtml, positions[positions.length - 1]);
     }
+}
+
+function addTrackerToListOnMap(trackerName, iconHtml, lastPosition) {
+    const trackerList = document.getElementById('tracker_list');
+
+    const tracker = document.createElement("div");
+    tracker.classList.add('tracker');
+    tracker.innerHTML =
+        iconHtml +
+        '<div style="padding-left: 10px;">' +
+            '<div>' + trackerName + '</div>' +
+            '<div style="font-size: 10px;">(Last time: ' + formatTimestamp(lastPosition.reported_at) + ')<div>' +
+        '</div>';
+    tracker.style.display = 'flex';
+    tracker.style.alignItems = 'center';
+    tracker.style.marginTop = '10px';
+    tracker.style.cursor = 'pointer';
+    tracker.style.background = 'rgb(51 51 51 / 15%)';
+    tracker.style.padding = '4px 10px';
+    tracker.style.borderRadius = '3px';
+    tracker.onclick = function() {
+        map.setView([lastPosition.lat, lastPosition.lng], 15);
+    };
+
+    trackerList.appendChild(tracker);
+}
+
+function getIconHtml() {
+    const iconColor = getRandomColor();
+
+    return '<div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: '+iconColor+'"></div>';
 }
 
 function getRandomColor() {
