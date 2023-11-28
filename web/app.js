@@ -131,7 +131,9 @@ function drawOnMap(data) {
             }).addTo(map).bindPopup(`${tracker}-${timestamp}`).openPopup();
         }
 
-        addTrackerToListOnMap(tracker, iconHtml, positions[positions.length - 1]);
+        if (positions[positions.length - 1]) {
+            addTrackerToListOnMap(tracker, iconHtml, positions[positions.length - 1]);
+        }
     }
 }
 
