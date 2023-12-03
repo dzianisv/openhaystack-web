@@ -44,6 +44,26 @@
         </div>
     </div>
 
+    <div class="modal" tabindex="-1" id="askPasswordDialog">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Keychain password</h5>
+                    <button type="button" class="close" id="closeAskPasswordDialog" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="password" id="askPasswordDialogInput" class="form-control"></input>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="savePassword()">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <div class="modal" tabindex="-1" id="errorModal">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -70,6 +90,7 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.js" charset="utf-8"></script>
     <script src="app.js"></script>
+    <script src="password.js"></script>
 </body>
 
 </html>

@@ -1,4 +1,5 @@
 const map = L.map('map');
+map.setView([0, 0], 15);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -21,14 +22,6 @@ if (navigator.geolocation) {
     });
 } else {
     console.error("Geolocation is not supported by this browser.");
-}
-
-function showDialog() {
-    const data = localStorage.getItem('trackers');
-    if (data) {
-        document.getElementById('trackerTextarea').value = data;
-    }
-    $('#trackerModal').modal('show');
 }
 
 async function saveTrackers() {
@@ -168,6 +161,14 @@ function getIconHtml() {
     return '<div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: '+iconColor+'"></div>';
 }
 
+function showDialog() {
+    const data = localStorage.getItem('trackers');
+    if (data) {
+        document.getElementById('trackerTextarea').value = data;
+    }
+    $('#trackerModal').modal('show');
+}
+
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
     let color = '#';
@@ -180,10 +181,6 @@ function getRandomColor() {
 function showError(message) {
     document.getElementById('errorMessage').textContent = message;
     $('#errorModal').modal('show');
-}
-
-function ask_password(message) {
-    return localStorage.getItem("keychainPassword")
 }
 
 fetchLocations();
