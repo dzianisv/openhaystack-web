@@ -12,6 +12,10 @@ this app allows to see locations of the openhaystack trackers
 # requirements
 
 ```shell
+git submodule update --init
+```
+
+```shell
 brew install python3
 python3 -m pip install pipenv
 ```
