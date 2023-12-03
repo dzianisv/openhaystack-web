@@ -7,21 +7,21 @@ this app allows to see locations of the openhaystack trackers
 # how to build a openhaystack tracker
 
 - [Nordic NRF51822 Airtag tutorial](https://dzianisv.github.io/notes/Embedded/Nordic-NRF51822-Airtag.html)
-- [Power-consumtion optimized firmware](https://github.com/acalatrava/openhaystack-firmware)
+- [openhaystack-toolkit](https://github.com/dzianisv/openhaystack-toolkit)
 
 # requirements
 
 ```shell
 brew install python3
 python3 -m pip install pipenv
+git submodule update --init --recursive
+pipenv install
 ```
 
 
-[Get] an Icloud key using `pipenv run python3 ./get-icloud-key.py` and export it when start an application.
-
 ```shell
 pipenv install
-ICLOUD_KEY=... pipenv run python3 app.py
+pipenv run python3 app.py
 ```
 
 # Usage

@@ -182,5 +182,9 @@ function showError(message) {
     $('#errorModal').modal('show');
 }
 
+function ask_password(message) {
+    return localStorage.getItem("keychainPassword")
+}
+
 fetchLocations();
 setInterval(fetchLocations, 60000); // fetch every 60 seconds

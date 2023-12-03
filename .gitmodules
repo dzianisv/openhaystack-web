@@ -1,3 +1,6 @@
 [submodule "backend/openhaybike"]
 	path = openhaybike
 	url = https://gitlab.com/eselac/openhaybike
+[submodule "openhaystack-toolkit"]
+	path = openhaystack-toolkit
+	url = https://github.com/dzianisv/openhaystack-toolkit.git
