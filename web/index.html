@@ -7,7 +7,7 @@
     <title>Trackers</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.css" />
 
     <style>
         .tracker:hover {
@@ -19,9 +19,13 @@
 <body>
     <div style="position: relative; height: 100vh;">
         <div id="map" style="height: 100%; width: 100%;"></div>
-        <button class="btn btn-success" style=" z-index: 1000; position: absolute; top: 10px; right: 10px;"
-            onclick="showDialog()">Trackers</button>
-        <div id="tracker_list" style="position: absolute; top: 65px; right: 10px; z-index: 1000; background: rgb(255 255 255 / 75%); padding: 0 10px 10px;"></div>
+        <div style=" z-index: 1000; position: absolute; top: 10px; right: 10px;">
+            <button class="btn btn-primary" onclick="showDialog()">Trackers</button>
+            <button class="btn btn-secondary" onclick="fetchLocations()">Fetch</button>
+        </div>
+        <div id="tracker_list"
+            style="position: absolute; top: 65px; right: 10px; z-index: 1000; background: rgb(255 255 255 / 75%); padding: 0 10px 10px;">
+        </div>
     </div>
 
     <div class="modal" tabindex="-1" id="trackerModal">
@@ -49,7 +53,8 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Keychain password</h5>
-                    <button type="button" class="close" id="closeAskPasswordDialog" data-dismiss="modal" aria-label="Close">
+                    <button type="button" class="close" id="closeAskPasswordDialog" data-dismiss="modal"
+                        aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -88,7 +93,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.js" charset="utf-8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.js"
+        charset="utf-8"></script>
     <script src="app.js"></script>
     <script src="password.js"></script>
 </body>
