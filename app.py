@@ -6,7 +6,10 @@ import os
 from openhaystacktoolkit.lib.icloud import get_icloud_key_cached
 
 def ask_password() -> str:
-    return eel.askPassword()('Input a keychain password to retreive an iCloud key')
+    # 'Input a keychain password to retreive an iCloud key'
+    password = eel.askPassword()()
+    logging.debug("keychain password %r", password)
+    return password
 
 @eel.expose
 def get_locations(trackers: dict):

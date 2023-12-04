@@ -81,7 +81,7 @@ async function fetchLocations() {
             const locationData = await backend.getLocations(JSON.parse(trackers));
             drawOnMap(locationData);
         } catch (error) {
-            showError('Network error: ' + error.message);
+            showError(JSON.stringify(error));
             console.error(error);
         }
     } else {
