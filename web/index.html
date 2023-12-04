@@ -8,6 +8,7 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol/dist/L.Control.Locate.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
     <style>
         .tracker:hover {
@@ -19,9 +20,14 @@
 <body>
     <div style="position: relative; height: 100vh;">
         <div id="map" style="height: 100%; width: 100%;"></div>
-        <div style=" z-index: 1000; position: absolute; top: 10px; right: 10px;">
+        <div id="controllPannel" style="z-index: 1000; position: absolute; top: 10px; right: 10px;">
             <button class="btn btn-primary" onclick="showDialog()">Trackers</button>
-            <button class="btn btn-secondary" onclick="fetchLocations()">Fetch</button>
+            <button class="btn btn-secondary" onclick="fetchLocations()">
+                <i class="fas fa-sync-alt"></i> <!-- Refresh icon -->
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="showPasswordDialog()">
+                <i class="fas fa-key"></i> <!-- Key icon -->
+            </button>
         </div>
         <div id="tracker_list"
             style="position: absolute; top: 65px; right: 10px; z-index: 1000; background: rgb(255 255 255 / 75%); padding: 0 10px 10px;">

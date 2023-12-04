@@ -1,15 +1,26 @@
+const PASSWORD_KEY="keychainPassword";
+
 function savePassword() {
-    localStorage.setItem("keychainPassword", document.getElementById("askPasswordDialogInput").value);
+    localStorage.setItem(PASSWORD_KEY, $("#askPasswordDialogInput").value);
     $("#askPasswordDialog").modal("hide");
 }
 
 function askPassword(message) {
-    return localStorage.getItem("keychainPassword")
+    return localStorage.getItem(PASSWORD_KEY)
+}
+
+function resetPassword() {
+    return localStorage.removeItem(PASSWORD_KEY)
+}
+
+function showPasswordDialog() {
+    $("#askPasswordDialogInput").value = localStorage.getItem(PASSWORD_KEY);
+    $("#askPasswordDialog").modal("show");
 }
 
 $(document).ready(() => {
-    if (!localStorage.getItem("keychainPassword")) {
-        $("#askPasswordDialog").modal("show");
+    if (!localStorage.getItem(PASSWORD_KEY)) {
+       showPasswordDialog();
     }
 });
 
