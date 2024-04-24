@@ -28,8 +28,8 @@ Then tracker positions has to be displayed on the map.
 
 ## How to build a open haystack tracker?
 
-- 1. [Building Nordic NRF51822 Airtag tutorial](https://dzianisv.github.io/notes/Embedded/Nordic-NRF51822-Airtag.html)
-- 2. [How to generate a key pair and flash a firmware to the MCU]([https://github.com/dzianisv/openhaystack-toolkit](https://github.com/dzianisv/openhaystack-toolkit/blob/main/README.md))
+1. [Building Nordic NRF51822 Airtag tutorial](https://dzianisv.github.io/notes/Embedded/Nordic-NRF51822-Airtag.html)
+2. 2. [How to generate a key pair and flash a firmware to the MCU]([https://github.com/dzianisv/openhaystack-toolkit](https://github.com/dzianisv/openhaystack-toolkit/blob/main/README.md))
 
 ## dev requirements
 
