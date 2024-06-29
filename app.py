@@ -3,7 +3,7 @@ import eel
 import backend.app
 import logging
 import os
-from openhaystacktoolkit.lib.icloud import get_icloud_key_cached
+from lib.icloud import get_icloud_key_cached
 
 def ask_password() -> str:
     # 'Input a keychain password to retreive an iCloud key'
