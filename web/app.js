@@ -111,7 +111,7 @@ function drawOnMap(data) {
         // Sort positions based on timestamp
         const positions = data[tracker].sort((a, b) => new Date(a.reported_at) - new Date(b.reported_at));
 
-        const iconHtml = getIconHtml();
+        const iconHtml = getIconHtml(tracker);
 
         for (const pos of positions) {       // Create a label with the tracker name and the date-time from the timestamp
             const timestamp = formatTimestamp(pos.reported_at);
@@ -131,34 +131,24 @@ function drawOnMap(data) {
 }
 
 function addTrackerToListOnMap(trackerName, iconHtml, lastPosition) {
+    console.log(trackerName, lastPosition);
+
     const trackerList = document.getElementById('tracker_list');
 
     const tracker = document.createElement("div");
     tracker.classList.add('tracker');
     tracker.innerHTML =
         iconHtml +
-        '<div style="padding-left: 10px;">' +
-            '<div>' + trackerName + '</div>' +
-            '<div style="font-size: 10px;">(Last time: ' + formatTimestamp(lastPosition.reported_at) + ')<div>' +
-        '</div>';
-    tracker.style.display = 'flex';
-    tracker.style.alignItems = 'center';
-    tracker.style.marginTop = '10px';
-    tracker.style.cursor = 'pointer';
-    tracker.style.background = 'rgb(51 51 51 / 15%)';
-    tracker.style.padding = '4px 10px';
-    tracker.style.borderRadius = '3px';
+        `<div class="tracker-info">
+            <div>${trackerName}</div>
+            <div class="tracker-updated">Updated at ${formatTimestamp(lastPosition.reported_at)}</div>
+            <div class="tracker-updated">Accuracy: ${lastPosition.accuracy}</div>
+        </div>`;
     tracker.onclick = function() {
         map.setView([lastPosition.lat, lastPosition.lng], 15);
     };
 
     trackerList.appendChild(tracker);
-}
-
-function getIconHtml() {
-    const iconColor = getRandomColor();
-
-    return '<div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: '+iconColor+'"></div>';
 }
 
 function showDialog() {
@@ -169,18 +159,36 @@ function showDialog() {
     $('#trackerModal').modal('show');
 }
 
-function getRandomColor() {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-}
-
 function showError(message) {
     document.getElementById('errorMessage').textContent = message;
     $('#errorModal').modal('show');
+}
+
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+}
+
+function intToRGB(hash) {
+    const r = (hash & 0xFF0000) >> 16;
+    const g = (hash & 0x00FF00) >> 8;
+    const b = hash & 0x0000FF;
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+}
+
+function getColorFromName(name) {
+    const hash = hashCode(name);
+    return intToRGB(hash);
+}
+
+function getIconHtml(name) {
+    const iconColor = getColorFromName(name);
+    return `<div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: ${iconColor}"></div>`;
 }
 
 fetchLocations();
