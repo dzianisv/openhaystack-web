@@ -7,6 +7,10 @@ import os
 import tempfile
 import subprocess
 import argparse
+import json
+import hashlib
+
+import keygen
 
 def flash(advertisement_key: str):
     advertisement_key_bin = base64.b64decode(advertisement_key)
@@ -35,7 +39,13 @@ def flash(advertisement_key: str):
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Flash the firmware')
-    parser.add_argument('--advertisement-key', type=str, required=True, help='Key ID to flash')
+    parser.add_argument('--advertisement-key', type=str, help='Key ID to flash')
     args = parser.parse_args()
 
-    sys.exit(flash(args.advertisement_key))
+    advertisement_key = args.advertisement_key 
+    if advertisement_key is None:
+        keys = keygen.generate_keys()
+        print(json.dumps(keys.__dict__, indent=4))
+        advertisement_key = keys.advertisement_key
+
+    sys.exit(flash(advertisement_key))
