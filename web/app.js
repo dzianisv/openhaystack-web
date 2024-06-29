@@ -5,7 +5,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 // Check if geolocation is available in the browser
 if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(function(position) {
+    navigator.geolocation.getCurrentPosition(function (position) {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
 
@@ -17,7 +17,7 @@ if (navigator.geolocation) {
         // map.setZoomAround([userLat, userLng]);
 
         L.control.locate().addTo(map);
-    }, function(error) {
+    }, function (error) {
         console.error("Error occurred while fetching location:", error);
     });
 } else {
@@ -43,7 +43,7 @@ class NetworkBackend {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({trackers: JSON.parse(trackers)}),
+            body: JSON.stringify({ trackers: JSON.parse(trackers) }),
         });
 
         if (!response.ok) {
@@ -144,7 +144,7 @@ function addTrackerToListOnMap(trackerName, iconHtml, lastPosition) {
             <div class="tracker-updated">Updated at ${formatTimestamp(lastPosition.reported_at)}</div>
             <div class="tracker-updated">Accuracy: ${lastPosition.accuracy}</div>
         </div>`;
-    tracker.onclick = function() {
+    tracker.onclick = function () {
         map.setView([lastPosition.lat, lastPosition.lng], 15);
     };
 
@@ -186,10 +186,23 @@ function getColorFromName(name) {
     return intToRGB(hash);
 }
 
+// Function to get the first grapheme cluster (may be a single character or an emoji)
+function getFirstGraphemeCluster(str) {
+    const codePoints = [...str];
+    return codePoints[0];
+}
+
 function getIconHtml(name) {
     const iconColor = getColorFromName(name);
-    return `<div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: ${iconColor}"></div>`;
+    const firstChar = getFirstGraphemeCluster(name); // Get the first grapheme cluster of the name
+
+    return `
+        <div style="width: 25px; height: 25px; border-radius: 100%; border: 1px solid #fff; background: ${iconColor}; display: flex; align-items: center; justify-content: center; font-size: 20px; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; line-height: 1;">
+            ${firstChar}
+        </div>
+    `;
 }
+
 
 fetchLocations();
 setInterval(fetchLocations, 60000); // fetch every 60 seconds
