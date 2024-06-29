@@ -14,3 +14,7 @@ sanic-cors = "*"
 
 [dev-packages]
 pyinstaller = "*"
+cryptography = "*"
+pyobjc = "*"
+requests = "*"
+openhaybike = {path = "./openhaybike"}
