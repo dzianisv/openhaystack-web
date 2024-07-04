@@ -81,7 +81,7 @@ async function fetchLocations() {
             const locationData = await backend.getLocations(JSON.parse(trackers));
             drawOnMap(locationData);
         } catch (error) {
-            showError(JSON.stringify(error));
+            showError(error.errorTraceback, error.errorText);
             console.error(error);
         }
     } else {
@@ -159,8 +159,9 @@ function showDialog() {
     $('#trackerModal').modal('show');
 }
 
-function showError(message) {
+function showError(message, title = 'Error') {
     document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorDialogTitle').textContent = title;
     $('#errorModal').modal('show');
 }
 

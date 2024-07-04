@@ -10,11 +10,10 @@ sanic-cors = "*"
 cryptography = "*"
 pyobjc = "*"
 requests = "*"
-
+openhaybike = {ref = "main", git = "git+https://gitlab.com/eselac/openhaybike"}
 
 [dev-packages]
 pyinstaller = "*"
 cryptography = "*"
 pyobjc = "*"
 requests = "*"
-openhaybike = {path = "./openhaybike"}

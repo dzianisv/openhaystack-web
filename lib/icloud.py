@@ -40,7 +40,7 @@ def is_cache_valid(file_path):
     hours_difference = (current_time - last_modified_time) / 3600
 
     # Check if the difference is less than 7 days
-    return hours_difference < 24 * 7
+    return hours_difference < 7 * 24 * 7
 
 
 def get_icloud_key(password_fn = None) -> str:
