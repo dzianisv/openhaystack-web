@@ -6,11 +6,11 @@ name = "pypi"
 [packages]
 eel = "*"
 sanic = "*"
+sanic-cors = "*"
 cryptography = "*"
 pyobjc = "*"
-openhaybike = {path = "./openhaybike"}
 requests = "*"
-sanic-cors = "*"
+
 
 [dev-packages]
 pyinstaller = "*"
