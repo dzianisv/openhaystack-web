@@ -1,0 +1,41 @@
+name: Build firmware
+
+on:
+  push:
+    paths:
+      - 'firmware/src/**'
+      - '.github/workflows/build-firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/src/**'
+      - '.github/workflows/build-firmware.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi make python3-pip unzip wget
+          pip3 install intelhex
+      - name: Fetch SDKs and toolchain
+        run: |
+          mkdir -p firmware/src/nrf-sdk
+          cd firmware/src/nrf-sdk
+          wget -q https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v12.x.x/nRF5_SDK_12.3.0_d7731ad.zip
+          unzip -q nRF5_SDK_12.3.0_d7731ad.zip
+          wget -q https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v15.x.x/nRF5_SDK_15.3.0_59ac345.zip
+          unzip -q nRF5_SDK_15.3.0_59ac345.zip
+          mkdir -p gcc-arm-none-eabi-6-2017-q2-update/bin
+          ln -s /usr/bin/arm-none-eabi* gcc-arm-none-eabi-6-2017-q2-update/bin/
+      - name: Add tools to PATH
+        run: echo "$(pwd)/firmware/src/tools" >> $GITHUB_PATH
+      - name: Build
+        working-directory: firmware/src
+        run: make all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: firmware/src/release

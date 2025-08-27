@@ -1,1 +1,3 @@
 .env
+firmware/src/nrf-sdk/
+firmware/src/release/
