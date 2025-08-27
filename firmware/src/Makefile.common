@@ -1,0 +1,169 @@
+.PHONY: merge bin stflash
+
+HAS_DEBUG ?= 0
+ifeq ($(HAS_DEBUG), 1)
+	CFLAGS += -DNRF_LOG_ENABLED=1 -DNRF_LOG_BACKEND_RTT_ENABLED=1 -DHAS_DEBUG=1
+	ASMFLAGS += -DNRF_LOG_ENABLED=1 -DNRF_LOG_BACKEND_SERIAL_USES_RTT=1 -DHAS_DEBUG=1
+else
+	CFLAGS += -DNRF_LOG_ENABLED=0 -DNRF_LOG_BACKEND_SERIAL_USES_RTT=0 -DHAS_DEBUG=0
+	ASMFLAGS += -DNRF_LOG_ENABLED=0 -DNRF_LOG_BACKEND_SERIAL_USES_RTT=0 -DHAS_DEBUG=0
+endif
+
+HAS_BATTERY ?= 0
+ifeq ($(HAS_BATTERY), 1)
+	CFLAGS += -DBATTERY_LEVEL=1
+	ASMFLAGS += -DBATTERY_LEVEL=1
+endif
+
+MAX_KEYS ?= 0
+ifneq ($(MAX_KEYS), 0)
+	CFLAGS += -DMAX_KEYS=$(MAX_KEYS)
+	ASMFLAGS += -DMAX_KEYS=$(MAX_KEYS)
+endif
+
+RANDOM_ROTATE_KEYS ?= 1
+ifeq ($(RANDOM_ROTATE_KEYS), 1)
+	CFLAGS += -DRANDOM_ROTATE_KEYS=1
+	ASMFLAGS += -DRANDOM_ROTATE_KEYS=1
+else
+	CFLAGS += -DRANDOM_ROTATE_KEYS=0
+	ASMFLAGS += -DRANDOM_ROTATE_KEYS=0
+endif
+
+HAS_DCDC ?= 0
+ifeq ($(HAS_DCDC), 1)
+	CFLAGS += -DHAS_DCDC=1 -DNRFX_POWER_CONFIG_DEFAULT_DCDCEN=1 -DPOWER_CONFIG_DEFAULT_DCDCEN=1
+	ASMFLAGS += -DHAS_DCDC=1 -DNRFX_POWER_CONFIG_DEFAULT_DCDCEN=1 -DPOWER_CONFIG_DEFAULT_DCDCEN=1
+endif
+
+KEY_ROTATION_INTERVAL ?= 0
+ifneq ($(KEY_ROTATION_INTERVAL), 0)
+	CFLAGS += -DKEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)
+	ASMFLAGS += -DKEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)
+endif
+
+ADVERTISING_INTERVAL ?= 0
+ifneq ($(ADVERTISING_INTERVAL), 0)
+	CFLAGS += -DADVERTISING_INTERVAL=$(ADVERTISING_INTERVAL)
+	ASMFLAGS += -DADVERTISING_INTERVAL=$(ADVERTISING_INTERVAL)
+endif
+
+ifeq ($(BOARD), )
+	override BOARD = custom_board
+endif
+CFLAGS += -DCUSTOM_BOARD_INC=$(BOARD) -DBOARD_CUSTOM
+ASMFLAGS += -DCUSTOM_BOARD_INC=$(BOARD) -DBOARD_CUSTOM
+
+CFLAGS += -Wno-error=array-bounds
+ASMFLAGS += -Wno-error=array-bounds
+
+define merge_target
+merge_$(1): $(1)
+	@echo merging application and softdevice... : $(1)
+	mergehex -m $$(OUTPUT_DIRECTORY)/$(1).hex \
+	$$(SDK_ROOT)/components/softdevice/$$(SOFTDEVICE_MODEL)/hex/$$(SOFTDEVICE_MODEL)_$$(NRF_BASE_MODEL)_$$(SOFTDEVICE_VERSION)_softdevice.hex \
+	-o $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL).hex
+
+help-msg::
+	@echo merge_$(1) - merge application and softdevice for $(1)
+endef
+
+$(foreach target,$(TARGETS),$(eval $(call merge_target,$(target))))
+
+merge: $(addprefix merge_,$(TARGETS))
+
+define build_target
+bin_$(1): merge_$(1)
+	hex2bin.py $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL).hex \
+	$$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL).bin
+
+help-msg::
+	@echo bin_$(1) - convert hex to bin for $(1)
+endef
+
+$(foreach target,$(TARGETS),$(eval $(call build_target,$(target))))
+
+define patch_target
+patched_$(1): bin_$(1) $(ADV_KEYS_FILE)
+	@echo Patching $(1)
+	cp $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL).bin $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.bin
+	xxd -p -c 100000 $$(ADV_KEYS_FILE) | xxd -r -p | dd of=$$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.bin skip=1 bs=1 seek=$$(shell grep -oba OFFLINEFINDINGPUBLICKEYHERE! $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL).bin | cut -d ':' -f 1) conv=notrunc
+	xxd -p -c 100000 $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.bin | grep -q $$(shell echo -n ENDOFKEYSENDOFKEYSENDOFKEYS! | xxd -p -c 100) || (echo "The key was not patched correctly!"; exit 1)
+	$$(OBJCOPY) -I binary -O elf32-littlearm -B arm $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.bin $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.elf
+
+help-msg::
+	@echo patched_$(1) - patch $(1) with keys from $(ADV_KEYS_FILE) for $(1)
+endef
+
+$(foreach target,$(TARGETS),$(eval $(call patch_target,$(target))))
+
+
+bin: $(addprefix bin_,$(TARGETS))
+
+patched: $(addprefix patched_,$(TARGETS))
+ifeq ($(wildcard $(ADV_KEYS_FILE)),)
+	$(error The file $(ADV_KEYS_FILE) does not exist!)
+endif
+
+PREFIX		?= arm-none-eabi
+GDB		:= $(PREFIX)-gdb
+SCRIPT_DIR	:= scripts
+
+ifeq ($(BMP_PORT),)
+BMP_PORT_CANDIDATES := $(wildcard \
+/dev/serial/by-id/usb-Black_Magic*_*-if00 \
+/dev/cu.usbmodem*1)
+ifeq ($(words $(BMP_PORT_CANDIDATES)),1)
+BMP_PORT := $(BMP_PORT_CANDIDATES)
+else
+BMP_PORT = $(error Black Magic Probe gdb serial port not found, please provide the device name via the BMP_PORT variable parameter$(if \
+$(BMP_PORT_CANDIDATES), (found $(BMP_PORT_CANDIDATES))))
+endif
+endif
+
+bmpflash-unlock:
+	@printf "  BMP $(BMP_PORT) (erasing)\n"
+	$(Q)$(GDB) -nx --batch \
+	           -ex 'target extended-remote $(BMP_PORT)' \
+			   -ex 'set non-stop on' \
+			   -ex 'monitor swdp_scan' \
+			   -ex 'attach 2' \
+			   -ex 'monitor erase_mass'
+
+bmpflash-monitor:
+	@printf "  BMP $(BMP_PORT) (monitor)\n"
+	@printf "  minicom -c on -D $$(echo $(BMP_PORT) | sed 's/if00/if02/')\n"
+	@$(Q)$(GDB) -nx --batch \
+	           -ex 'target extended-remote $(BMP_PORT)' \
+			   -ex 'monitor swdp_scan' \
+			   -ex 'attach 1' \
+			   -ex 'mon rtt enable' \
+			   -ex 'run'
+
+help-msg::
+	@echo bmpflash-unlock - erase all flash memory using Black Magic Probe
+	@echo bmpflash-monitor - monitor the device using Black Magic Probe
+
+define flash_targets
+.PHONY: stflash-$(1)-patched bmpflash-$(1)-patched
+stflash-$(1)-patched: patched_$(1)
+	@echo flashing application and softdevice...␍
+	openocd -f openocd.cfg -c "init; halt; nrf51 mass_erase; program $(OUTPUT_DIRECTORY)/$(1)_$(SOFTDEVICE_MODEL)_patched.bin verify; reset; exit";
+
+bmpflash-$(1)-patched: patched_$(1)
+	@printf "  BMP $$(BMP_PORT) (flash)\n"
+	$$(Q)$$(GDB) -nx --batch \
+	           -ex 'target extended-remote $$(BMP_PORT)' \
+			   -ex 'monitor swdp_scan' \
+			   -ex 'attach 1' \
+			   -ex 'load' \
+			   -ex 'compare-sections' \
+			   -ex 'kill' \
+	           $$(OUTPUT_DIRECTORY)/$(1)_$$(SOFTDEVICE_MODEL)_patched.elf
+
+help-msg::
+	@echo stflash-$(1)-patched - flash $(1) with softdevice for $(1)
+	@echo bmpflash-$(1)-patched - flash $(1) with softdevice for $(1) using Black Magic Probe
+endef
+
+$(foreach target, $(TARGETS), $(eval $(call flash_targets,$(target))))
