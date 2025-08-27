@@ -121,6 +121,10 @@ trackers.json example
 ]
 ```
 
+## firmware
+
+The firmware defines the status LED on GPIO P0.17. Connect your LED (with a suitable series resistor) to that pin, or change the STATUS_LED_PIN definition in firmware/src/main.c if you want to use a different pin
+
 ## references
 
 [Low-power consumption firmare](https://github.com/acalatrava/openhaystack-firmware/releases/tag/0.1)
