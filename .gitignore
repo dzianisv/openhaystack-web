@@ -1,3 +1,13 @@
 .env
 firmware/src/nrf-sdk/
 firmware/src/release/
+
+# Secrets: tracker private keys (see README) must never be committed
+trackers.json
+tracker.json
+*.key
+
+# Local environment / build artifacts
+.venv/
+__pycache__/
+*.pyc

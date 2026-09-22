@@ -13,21 +13,51 @@ from openhaybike.keychain import read_keychain
 
 
 import os
+import stat
+import tempfile
 import time
+from pathlib import Path
 
-ICLOUD_CACHE_FILE = os.path.join(os.environ.get("HOME"), ".config", "icloud")
+# The cached iCloud key is a live credential stored in plaintext, so the cache is
+# deliberately short-lived. Expiry only costs an interactive keychain re-prompt.
+CACHE_TTL_HOURS = 12
+
+# Permissions for the cache file and its parent directory: owner-only.
+CACHE_FILE_MODE = 0o600
+CACHE_DIR_MODE = 0o700
+
+
+def _config_dir() -> str:
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return xdg
+    return os.path.join(str(Path.home()), ".config")
+
+
+ICLOUD_CACHE_FILE = os.path.join(_config_dir(), "icloud")
 
 def is_cache_valid(file_path):
     """
-    Check if the file at `file_path` was modified less than 12 hours ago.
+    Check if the file at `file_path` holds a usable, non-expired cached key.
+
+    The cache is valid only when the file exists, is not empty (an interrupted
+    write can leave a zero-byte file) and was modified less than
+    `CACHE_TTL_HOURS` hours ago.
 
     Args:
     file_path (str): The path to the file.
 
     Returns:
-    bool: True if the file was modified less than 12 hours ago, False otherwise.
+    bool: True if the cached value is usable and fresh, False otherwise.
     """
     if not os.path.exists(file_path):
+        return False
+
+    try:
+        with open(file_path, "r", encoding='utf8') as f:
+            if not f.read().strip():
+                return False
+    except OSError:
         return False
 
     # Get the last modification time of the file
@@ -39,8 +69,7 @@ def is_cache_valid(file_path):
     # Calculate the difference in hours
     hours_difference = (current_time - last_modified_time) / 3600
 
-    # Check if the difference is less than 7 days
-    return hours_difference < 7 * 24 * 7
+    return hours_difference < CACHE_TTL_HOURS
 
 
 def get_icloud_key(password_fn = None) -> str:
@@ -82,16 +111,51 @@ def get_icloud_key(password_fn = None) -> str:
     )
     return icloud_key
 
+def _repair_permissions(file_path):
+    """Tighten a pre-existing cache file to owner-only if it is more permissive."""
+    try:
+        current_mode = stat.S_IMODE(os.stat(file_path).st_mode)
+    except OSError:
+        return
+    if current_mode != CACHE_FILE_MODE:
+        os.chmod(file_path, CACHE_FILE_MODE)
+
+
+def _write_cache(file_path, key):
+    """Atomically write `key` to `file_path` with owner-only permissions."""
+    directory = os.path.dirname(file_path) or "."
+    os.makedirs(directory, mode=CACHE_DIR_MODE, exist_ok=True)
+
+    fd, tmp_path = tempfile.mkstemp(dir=directory)
+    try:
+        os.chmod(tmp_path, CACHE_FILE_MODE)
+        with os.fdopen(fd, "w", encoding='utf8') as f:
+            f.write(key)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, file_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _read_cache(file_path):
+    with open(file_path, "r", encoding='utf8') as f:
+        return f.read().strip()
+
+
 def get_icloud_key_cached(password_fn = None) -> str:
     if is_cache_valid(ICLOUD_CACHE_FILE):
-        with open(ICLOUD_CACHE_FILE, "r", encoding='utf8') as f:
-            return f.read()
-    else:
-        key = get_icloud_key(password_fn).decode('ascii')
-        with open(ICLOUD_CACHE_FILE, "w", encoding='utf8') as f:
-            f.write(key)
-            return key
-        
+        _repair_permissions(ICLOUD_CACHE_FILE)
+        return _read_cache(ICLOUD_CACHE_FILE)
+
+    key = get_icloud_key(password_fn).decode('ascii').strip()
+    _write_cache(ICLOUD_CACHE_FILE, key)
+    return key
+
 if __name__ == "__main__":
     print(get_icloud_key_cached())
 
