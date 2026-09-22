@@ -1,0 +1,91 @@
+name: Test Python
+
+on:
+  push:
+    paths:
+      - 'app.py'
+      - 'backend/**'
+      - 'lib/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'web/**'
+      - 'Pipfile'
+      - 'Pipfile.lock'
+      - '.github/workflows/test-python.yml'
+  pull_request:
+    paths:
+      - 'app.py'
+      - 'backend/**'
+      - 'lib/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'web/**'
+      - 'Pipfile'
+      - 'Pipfile.lock'
+      - '.github/workflows/test-python.yml'
+
+env:
+  PIPENV_VENV_IN_PROJECT: '1'
+  PIPENV_IGNORE_VIRTUALENVS: '1'
+
+jobs:
+  # Syntax-only checks. No project dependencies are installed, so this runs on
+  # Linux even though the app itself is macOS-only (pyobjc).
+  syntax:
+    name: Syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python sources
+        run: python -m compileall -q app.py backend/app.py lib tools tests
+      - name: Check browser JavaScript
+        run: |
+          node --check web/app.js
+          node --check web/password.js
+
+  # `pipenv verify` only compares the Pipfile hash against Pipfile.lock, so it
+  # needs no dependency install and is safe on Linux.
+  lockfile:
+    name: Lockfile in sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pipenv
+        run: pip install pipenv
+      - name: Verify Pipfile.lock matches Pipfile
+        run: pipenv verify
+
+  # macOS runner is mandatory: Pipfile.lock pins pyobjc 12.2.2 with no
+  # `sys_platform` marker, and pyobjc-core publishes macOS-only wheels, so
+  # `pipenv install --deploy` cannot succeed on Linux.
+  test:
+    name: Unit tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pipenv
+        run: pip install pipenv
+      - name: Locate pip cache
+        id: pip-cache
+        run: echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pip-cache.outputs.dir }}
+          key: ${{ runner.os }}-py3.12-pipenv-${{ hashFiles('Pipfile.lock') }}
+          restore-keys: ${{ runner.os }}-py3.12-pipenv-
+      - name: Install dependencies
+        run: pipenv install --deploy --dev
+      - name: Run tests
+        run: pipenv run python -m unittest discover -s tests -v

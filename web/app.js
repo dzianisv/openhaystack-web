@@ -3,6 +3,10 @@ map.setView([0, 0], 15);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+// Tracker markers live in their own layer group so a refresh can drop exactly
+// the previous set without touching the "You are here!" marker or the locate control.
+const trackerLayer = L.layerGroup().addTo(map);
+
 // Check if geolocation is available in the browser
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function (position) {
@@ -36,18 +40,28 @@ async function saveTrackers() {
     }
 }
 
+// The REST backend is served from the same origin as this page by default.
+// Override with localStorage.setItem('backendUrl', 'http://127.0.0.1:8001') when
+// backend/app.py runs on another port - keep it on a loopback origin the backend
+// CORS config allows (http://localhost:<port> / http://127.0.0.1:<port>).
+function getBackendBaseUrl() {
+    const override = localStorage.getItem('backendUrl');
+    const base = override || window.location.origin;
+    return base.replace(/\/+$/, '');
+}
+
 class NetworkBackend {
     async getLocations(trackers) {
-        const response = await fetch('http://localhost:8000/api/v1/locations', {
+        const response = await fetch(`${getBackendBaseUrl()}/api/v1/locations`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ trackers: JSON.parse(trackers) }),
+            body: JSON.stringify({ trackers }),
         });
 
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            throw new Error(`Backend request failed: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -56,6 +70,8 @@ class NetworkBackend {
     }
 
     static async isAvailable() {
+        // Always the fallback: there is no cheap way to probe the REST backend
+        // without issuing a real request, and it shares this page's origin.
         return true;
     }
 }
@@ -81,7 +97,7 @@ async function fetchLocations() {
             const locationData = await backend.getLocations(JSON.parse(trackers));
             drawOnMap(locationData);
         } catch (error) {
-            showError(error.errorTraceback, error.errorText);
+            showError(error, 'Failed to fetch locations');
             console.error(error);
         }
     } else {
@@ -104,12 +120,13 @@ function formatTimestamp(timestamp) {
 
 function drawOnMap(data) {
     document.getElementById('tracker_list').innerHTML = '';
+    trackerLayer.clearLayers();
 
     for (const tracker in data) {
         if (!data.hasOwnProperty(tracker)) continue; // Check if key belongs to object to avoid prototype chain issues
 
-        // Sort positions based on timestamp
-        const positions = data[tracker].sort((a, b) => new Date(a.reported_at) - new Date(b.reported_at));
+        // Sort positions by their unix-seconds timestamp, oldest first.
+        const positions = data[tracker].slice().sort((a, b) => a.reported_at - b.reported_at);
 
         const iconHtml = getIconHtml(tracker);
 
@@ -121,7 +138,7 @@ function drawOnMap(data) {
                     className: 'marker',
                     html: iconHtml
                 })
-            }).addTo(map).bindPopup(`${tracker}-${timestamp}`).openPopup();
+            }).addTo(trackerLayer).bindPopup(`${tracker}-${timestamp}`);
         }
 
         if (positions[positions.length - 1]) {
@@ -159,9 +176,41 @@ function showDialog() {
     $('#trackerModal').modal('show');
 }
 
-function showError(message, title = 'Error') {
-    document.getElementById('errorMessage').textContent = message;
-    document.getElementById('errorDialogTitle').textContent = title;
+// Accepts an eel rejected-call object ({errorText, errorTraceback}), a native
+// Error, a plain string, or null - and always renders something readable.
+function describeError(error) {
+    if (error === null || error === undefined) {
+        return { title: 'Error', message: 'An unknown error occurred.' };
+    }
+    if (typeof error === 'string') {
+        return { title: 'Error', message: error };
+    }
+    if (error.errorText || error.errorTraceback) {
+        const text = error.errorText || 'Backend call failed';
+        const traceback = error.errorTraceback;
+        return {
+            title: text.split('\n')[0].slice(0, 120),
+            message: traceback ? `${text}\n\n${traceback}` : text,
+        };
+    }
+    if (error instanceof Error || typeof error.message === 'string') {
+        const text = error.message || String(error);
+        return {
+            title: (error.name || 'Error').slice(0, 120),
+            message: error.stack ? `${text}\n\n${error.stack}` : text,
+        };
+    }
+    try {
+        return { title: 'Error', message: JSON.stringify(error) };
+    } catch (e) {
+        return { title: 'Error', message: String(error) };
+    }
+}
+
+function showError(error, title) {
+    const described = describeError(error);
+    document.getElementById('errorMessage').textContent = described.message;
+    document.getElementById('errorDialogTitle').textContent = title || described.title || 'Error';
     $('#errorModal').modal('show');
 }
 

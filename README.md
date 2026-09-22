@@ -15,13 +15,19 @@ Click on the Trackers button and put the trackers configuration, for example
 [
     {
         "name": "microbit",
-        "key_id": "",
-        "private_key": ""
+        "key_id": "DIf2Od7NcEfYHsFVQTC/xTUFecr3J8B0KoPfJHsXRQM=",
+        "advertisement_key": "f9dQjCafB68gi9ZKLH/iQsN9tScDX+zXF4BfZGDqoyA=",
+        "private_key": "7b1MPYzazUCpDzTUDO9RM2h+2VytFGe0Sdua8A=="
     }
 ]
 ```
 
 Then tracker positions has to be displayed on the map.
+
+The app asks for your macOS keychain password to decrypt the iCloud key. It is **not**
+saved anywhere anymore (older versions kept it in the browser `localStorage` in
+plaintext), so expect to type it once per app start, and again whenever the cached
+iCloud key expires (see [Files used](#files-used)).
 
 
 # for developers
@@ -29,10 +35,32 @@ Then tracker positions has to be displayed on the map.
 ## install requirements
 
 ```shell
-brew install python3 openocd
-python3 -m pipenv
-git submodule update --init --recursive
-pipenv install
+brew install python3
+python3 -m pip install pipenv
+pipenv sync
+```
+
+`pipenv sync` installs exactly what `Pipfile.lock` pins (with hash verification) -
+`eel` is pinned to `==0.18.2` and `openhaybike` to an immutable git commit, so don't
+replace it with a plain `pipenv install` unless you intend to move those pins.
+`./run.sh` does this for you on the first run.
+
+Run the app:
+
+```shell
+pipenv run python3 app.py
+```
+
+`openocd` is only needed if you are going to flash a MCU:
+
+```shell
+brew install openocd
+```
+
+## run the tests
+
+```shell
+pipenv run python -m unittest discover -s tests
 ```
 
 ## generate keys
@@ -105,8 +133,24 @@ Put keys in array into "trackers.json" as in examble below
 It needs time to advertise the tracker by the nearby iPhones, wait about 10m
 
 ```shell
-pipenv run ./tools/locations.py tracker.json
+pipenv run ./tools/locations.py                      # reads ./trackers.json
+pipenv run ./tools/locations.py trackers.json        # or pass the path
+pipenv run ./tools/locations.py --config trackers.json
+pipenv run ./tools/locations.py trackers.json --hours 6
+pipenv run ./tools/locations.py trackers.json --format raw
 ```
+
+| argument | default | what it does |
+|---|---|---|
+| `CONFIG` (positional, optional) | `trackers.json` | path to the trackers JSON |
+| `--config CONFIG` | `trackers.json` | same thing; passing both forms exits with code 2 |
+| `--hours HOURS` | `24` | how far back to look for reports, must be > 0 |
+| `--format {json,raw}` | `json` | `json` prints `{name: [{lat, lng, accuracy, reported_at}]}`, `raw` prints the old python repr |
+
+The default output is JSON now - it used to be a python `repr`. Use `--format raw` if
+you had something parsing the old format.
+
+`trackers.json` holds tracker **private keys** and is gitignored - don't commit it.
 
 trackers.json example
 
@@ -132,28 +176,39 @@ The firmware defines the status LED on GPIO P0.17. Connect your LED (with a suit
 ## how to build a openhaystack tracker
 
 1. [Building Nordic NRF51822 Airtag tutorial](https://dzianisv.github.io/notes/Embedded/Nordic-NRF51822-Airtag.html)
-2. [How to generate a key pair and flash a firmware to the MCU]([https://github.com/dzianisv/openhaystack-toolkit](https://github.com/dzianisv/openhaystack-toolkit/blob/main/README.md))
+2. [How to generate a key pair and flash a firmware to the MCU](https://github.com/dzianisv/openhaystack-toolkit/blob/main/README.md)
 
 
-# dev environment
+# optional REST backend
 
-1. Install system requirements (macOS example):
-```shell
-brew install python3
-python3 -m pip install pipenv
-git submodule update --init --recursive
-pipenv install
-```
-
-2. Install python requirements
+`app.py` (eel) talks to python directly. If that's not available the web UI falls back
+to a REST backend, `backend/app.py` (sanic):
 
 ```shell
-pipenv install
-pipenv run python3 app.py
+ICLOUD_KEY="$(pipenv run python -m lib.icloud)" pipenv run python backend/app.py
 ```
+
+It exposes a single endpoint, `POST /api/v1/locations`, with a body of
+`{"trackers": [...]}`.
+
+| env var | default | meaning |
+|---|---|---|
+| `ICLOUD_KEY` | *(none, required)* | iCloud key; without it the endpoint returns 500 |
+| `BIND_HOST` (or `HOST`) | `127.0.0.1` | address to bind |
+| `PORT` | `8000` | port to bind |
+| `ALLOWED_ORIGINS` | `http://localhost:<port>,http://127.0.0.1:<port>` (and `:8000`) | comma separated CORS origins |
+
+⚠️ **The endpoint is unauthenticated.** It accepts tracker private keys and returns
+physical location history to anyone who can reach it. Keep it on loopback; binding
+`BIND_HOST` to anything else publishes your trackers to the network (the server logs a
+warning when you do).
 
 
 ## Files used
 
-~/.config/icloud
-$HOME/Library/Application Support/iCloud/Accounts/
+`~/.config/icloud` - the cached iCloud key. `XDG_CONFIG_HOME` is honoured if set. The
+file is written `0600` and the directory `0700`, and the cache expires after
+**12 hours**, after which you get prompted for the keychain password again.
+
+`$HOME/Library/Application Support/iCloud/Accounts/` - the macOS keychain the key is
+read from.

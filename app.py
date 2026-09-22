@@ -3,9 +3,7 @@ import eel
 import logging
 import time
 from lib.icloud import get_icloud_key_cached
-
-from openhaybike.types import BikeTracker
-from openhaybike.locations import get_locations_of_trackers
+from lib.trackers import get_tracker_locations
 
 # The keychain password lives in the browser's memory only, so the first call
 # after start-up merely opens the dialog and returns nothing. Wait for the user.
@@ -33,20 +31,6 @@ def ask_password() -> str:
             )
         eel.sleep(PASSWORD_POLL_INTERVAL_SECONDS)
 
-def _get_locations(trackers: dict, icloud_key: str) -> dict:
-    trackers = [BikeTracker(
-        name=tracker.get("name"),
-        key_id=tracker.get("key_id"),
-        advertisement_key="",
-        private_key=tracker.get("private_key"),
-    ) for tracker in trackers]
-
-    reports = get_locations_of_trackers(trackers, icloud_key, 24)
-    r = {}
-    for name, locations in reports.items():
-        r[name] = [location.serialize() for location in locations]
-    return r
-
 @eel.expose
 def get_locations(trackers: dict):
     # Never log tracker private keys.
@@ -56,7 +40,7 @@ def get_locations(trackers: dict):
         [tracker.get("name") for tracker in trackers],
     )
     try:
-        return _get_locations(trackers, get_icloud_key_cached(ask_password))
+        return get_tracker_locations(trackers, get_icloud_key_cached(ask_password))
     except Exception:
         logging.exception("get_locations failed")
         raise

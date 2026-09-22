@@ -11,8 +11,11 @@ from sanic.response import json
 
 from sanic_cors import CORS
 
-from openhaybike.types import BikeTracker
-from openhaybike.locations import get_locations_of_trackers
+# backend/app.py is executed as a script, so sys.path[0] is backend/ - add the
+# repository root so the shared lib/ package is importable.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from lib.trackers import get_tracker_locations, validate_tracker_list
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -65,35 +68,12 @@ CORS(
 )
 
 
-def get_locations(trackers: dict, icloud_key: str) -> dict:
-    trackers = [BikeTracker(
-        name=tracker.get("name"),
-        key_id=tracker.get("key_id"),
-        advertisement_key="",
-        private_key=tracker.get("private_key"),
-    ) for tracker in trackers]
-
-    reports = get_locations_of_trackers(trackers, icloud_key, 24)
-    r = {}
-    for name, locations in reports.items():
-        r[name] = [location.serialize() for location in locations]
-    return r
-
-
 def validate_trackers(payload) -> list:
     """Return the tracker list, or raise ValueError with a user-facing message."""
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object")
-    trackers = payload.get("trackers", [])
-    if not isinstance(trackers, list):
-        raise ValueError("'trackers' must be a list")
-    for index, tracker in enumerate(trackers):
-        if not isinstance(tracker, dict):
-            raise ValueError(f"trackers[{index}] must be an object")
-        for field in ("key_id", "private_key"):
-            if not tracker.get(field):
-                raise ValueError(f"trackers[{index}] is missing '{field}'")
-    return trackers
+    # Per-tracker rules live in lib.trackers so both entry points share them.
+    return validate_tracker_list(payload.get("trackers", []))
 
 
 @app.route("/api/v1/locations", methods=["POST"])
@@ -116,8 +96,8 @@ async def post_locations(request):
         return json({"error": str(e)}, status=400)
 
     try:
-        # get_locations performs blocking network I/O; keep it off the event loop.
-        r = await asyncio.to_thread(get_locations, trackers, icloud_key)
+        # The lookup performs blocking network I/O; keep it off the event loop.
+        r = await asyncio.to_thread(get_tracker_locations, trackers, icloud_key)
     except Exception as e:
         logger.exception("Failed to fetch locations from upstream")
         return json(

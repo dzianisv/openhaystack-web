@@ -4,16 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-eel = "*"
+eel = "==0.18.2"
 sanic = "*"
 sanic-cors = "*"
 cryptography = "*"
 pyobjc = "*"
 requests = "*"
-openhaybike = {ref = "main", git = "git+https://gitlab.com/eselac/openhaybike"}
+openhaybike = {ref = "0868338498fdaf1eee776929d7874cf28cf453be", git = "git+https://gitlab.com/eselac/openhaybike"}
 
 [dev-packages]
 pyinstaller = "*"
-cryptography = "*"
-pyobjc = "*"
-requests = "*"
