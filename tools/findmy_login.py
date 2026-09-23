@@ -21,7 +21,9 @@ identity is stored: no username, no password.
 """
 
 import argparse
+import subprocess
 import sys
+import time
 from getpass import getpass
 from pathlib import Path
 
@@ -42,6 +44,112 @@ from findmy import (  # noqa: E402
 from lib import findmy_backend  # noqa: E402
 
 DEVICES_URL = "https://account.apple.com/account/manage/section/devices"
+
+
+def _gui_available() -> bool:
+    """True when there is no usable terminal but a macOS GUI is reachable."""
+    return not sys.stdin.isatty() and sys.platform == "darwin"
+
+
+def _gui_prompt(message: str, *, secret: bool) -> str:
+    """Ask for a line of input with a native macOS dialog.
+
+    Used when the tool is driven from a non-interactive shell (an agent, a
+    launcher, an IDE task), where input() cannot reach the user.
+
+    This is deliberately NOT used for the Apple ID password. An unexpected
+    dialog asking for an Apple password is indistinguishable from phishing,
+    and training anyone to type one into a non-Apple window is a bad habit.
+    Passwords come from a 0600 file (--password-file) or from getpass in a
+    real terminal. Short-lived 2FA codes are fine here: they expire in
+    minutes and cannot be replayed.
+    """
+    # The message is passed as an argv item, never interpolated into the
+    # script source, so it cannot break out of the string literal.
+    script = (
+        "on run argv\n"
+        "  set r to display dialog (item 1 of argv) default answer \"\""
+        f"{' with hidden answer' if secret else ''}"
+        " with title \"openhaystack-web\" buttons {\"Cancel\", \"OK\"}"
+        " default button \"OK\"\n"
+        "  return text returned of r\n"
+        "end run"
+    )
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["/usr/bin/osascript", "-e", script, message],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+    except (subprocess.TimeoutExpired, OSError) as error:
+        raise RuntimeError(
+            f"Could not show the macOS prompt ({type(error).__name__}). "
+            "Run this tool from a terminal instead."
+        ) from None
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        if "-128" in detail or "User canceled" in detail:
+            raise RuntimeError("Prompt was cancelled.")
+        raise RuntimeError(f"Could not show the macOS prompt: {detail or 'unknown error'}")
+    return result.stdout.strip()
+
+
+def _ask(message: str) -> str:
+    if _gui_available():
+        return _gui_prompt(message, secret=False)
+    return input(f"{message}: ").strip()
+
+
+def _wait_for_code_file(path: Path, timeout: float = 600.0) -> str:
+    """Block until a 2FA code is dropped into ``path``, then consume it.
+
+    Lets the tool run unattended from a non-interactive shell: Apple shows the
+    code on the trusted device, and the code is handed over by writing it to a
+    file rather than by typing into a dialog. The file is deleted once read,
+    so a stale code can never be reused.
+    """
+    print(f"Waiting up to {timeout:g}s for the 6-digit code. Write it to: {path}")
+    print(f"  e.g.  echo 123456 > {path}")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            code = "".join(ch for ch in path.read_text(encoding="utf8") if ch.isdigit())
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            if len(code) == 6:
+                return code
+            print(f"Ignoring '{path}': expected 6 digits, got {len(code)}. Waiting again.")
+        time.sleep(1.0)
+    raise RuntimeError(f"No code appeared at {path} within {timeout:g}s.")
+
+
+def _read_password_file(path: Path) -> str:
+    """Read a password from a file, refusing world/group-readable ones.
+
+    The file may hold just the password, or an Apple ID on the first line and
+    the password on the second.
+    """
+    try:
+        mode = path.stat().st_mode & 0o077
+        if mode:
+            raise ValueError(
+                f"'{path}' is readable by others (mode {oct(path.stat().st_mode & 0o777)}). "
+                f"Run: chmod 600 {path}"
+            )
+        lines = [line for line in path.read_text(encoding="utf8").splitlines() if line.strip()]
+    except OSError as error:
+        raise ValueError(f"Cannot read '{path}': {error}") from None
+    if not lines:
+        raise ValueError(f"'{path}' is empty")
+    return (lines[1] if len(lines) > 1 else lines[0]).strip()
+
+
+def _ask_secret(message: str) -> str:
+    return getpass(f"{message}: ")
 
 
 def _is_account_limit_error(exc: BaseException) -> bool:
@@ -74,23 +182,32 @@ def _describe_method(method) -> str:
     return type(method).__name__
 
 
-def _choose_method(methods):
+def _choose_method(methods, preselect=None):
     print("\nTwo-factor authentication required. Available methods:")
     for index, method in enumerate(methods, start=1):
         print(f"  [{index}] {_describe_method(method)}")
+
+    if preselect is not None:
+        if not 1 <= preselect <= len(methods):
+            raise SystemExit(
+                f"--2fa-method {preselect} is out of range; "
+                f"Apple offered {len(methods)} method(s)."
+            )
+        print(f"Using method [{preselect}] as requested.")
+        return methods[preselect - 1]
 
     if len(methods) == 1:
         print("Using the only available method.")
         return methods[0]
 
     while True:
-        raw = input(f"Choose a method [1-{len(methods)}]: ").strip()
+        raw = _ask(f"Choose a method [1-{len(methods)}]")
         if raw.isdigit() and 1 <= int(raw) <= len(methods):
             return methods[int(raw) - 1]
         print("Please enter one of the listed numbers.")
 
 
-def _complete_2fa(account: AppleAccount) -> LoginState:
+def _complete_2fa(account: AppleAccount, preselect=None, code_file=None) -> LoginState:
     methods = account.get_2fa_methods()
     if not methods:
         raise SystemExit(
@@ -98,12 +215,13 @@ def _complete_2fa(account: AppleAccount) -> LoginState:
             "Try again later, or check your Apple ID security settings."
         )
 
-    method = _choose_method(methods)
+    method = _choose_method(methods, preselect)
     method.request()
     print("A verification code has been sent/displayed.")
 
     for attempt in range(3):
-        code = input("Enter the 6-digit code: ").strip()
+        code = (_wait_for_code_file(code_file) if code_file
+                else _ask("Enter the 6-digit Apple verification code"))
         try:
             state = method.submit(code)
         except (InvalidCredentialsError, UnhandledProtocolError) as exc:
@@ -147,6 +265,31 @@ def parse_args(argv=None):
         default=None,
         help="Where to store the session (default: %s, or $%s)."
         % (findmy_backend.account_file_path(), findmy_backend.ACCOUNT_FILE_ENV),
+    )
+    parser.add_argument(
+        "--password-file",
+        default=None,
+        metavar="PATH",
+        help="Read the Apple ID password from this file instead of prompting. "
+        "The file must be mode 600. It may contain just the password, or the "
+        "Apple ID on the first line and the password on the second.",
+    )
+    parser.add_argument(
+        "--2fa-method",
+        dest="twofa_method",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Pick the Nth two-factor method Apple offers, instead of asking. "
+        "Methods are listed in the order Apple returns them.",
+    )
+    parser.add_argument(
+        "--code-file",
+        default=None,
+        metavar="PATH",
+        help="Wait for the 6-digit verification code to be written to this "
+        "file instead of reading it from the terminal. The file is deleted "
+        "once read, so a code can never be replayed.",
     )
     parser.add_argument(
         "--force",
@@ -203,6 +346,7 @@ def _persist_identity(account: AppleAccount, account_path: Path) -> None:
 def main(argv=None) -> int:
     args = parse_args(argv)
     account_path = Path(args.account_file) if args.account_file else findmy_backend.account_file_path()
+    code_path = Path(args.code_file).expanduser() if args.code_file else None
 
     if not args.force:
         existing = _existing_session(account_path)
@@ -215,11 +359,18 @@ def main(argv=None) -> int:
             findmy_backend.close_account(existing)
             return 0
 
-    apple_id = args.apple_id or input("Apple ID (email): ").strip()
+    apple_id = args.apple_id or _ask("Apple ID (email)")
     if not apple_id:
         print("An Apple ID is required.", file=sys.stderr)
         return 2
-    password = getpass("Apple ID password (not echoed): ")
+    if args.password_file:
+        try:
+            password = _read_password_file(Path(args.password_file).expanduser())
+        except ValueError as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 2
+    else:
+        password = _ask_secret(f"Apple ID password for {apple_id} (not echoed, not stored here)")
     if not password:
         print("A password is required.", file=sys.stderr)
         return 2
@@ -241,7 +392,7 @@ def main(argv=None) -> int:
             del password
 
         if state == LoginState.REQUIRE_2FA:
-            state = _complete_2fa(account)
+            state = _complete_2fa(account, args.twofa_method, code_path)
 
         if state != LoginState.LOGGED_IN:
             print(f"Login did not complete (state: {state}).", file=sys.stderr)
