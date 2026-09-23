@@ -51,14 +51,36 @@ or SMS). On success it prints `Signed in as ...` and saves the session.
 
 ```
 usage: tools/findmy_login.py [-h] [--account-file ACCOUNT_FILE] [--force]
-                             [--apple-id APPLE_ID]
+                             [--new-device-identity] [--apple-id APPLE_ID]
 ```
 
 | argument | what it does |
 |---|---|
 | `--apple-id APPLE_ID` | Apple ID (email). Prompted for when omitted. The password is *always* prompted for. |
 | `--account-file ACCOUNT_FILE` | Where to store the session. Default: `$FINDMY_ACCOUNT_FILE`, else `$XDG_CONFIG_HOME/openhaystack-web/account.json`, else `~/.config/openhaystack-web/account.json`. |
-| `--force` | Log in again even when a valid session already exists. Without it the script detects the existing session, prints `Nothing to do.` and exits 0. |
+| `--force` | Log in again even when a valid session already exists. Without it the script detects the existing session, prints `Nothing to do.` and exits 0. It reuses the stored device identity, so it does **not** register another device. |
+| `--new-device-identity` | Throws the stored device identity away and mints a new one, which makes Apple register **another** device on your Apple ID. This is the expensive action that causes `Account limit reached`. Only for the case where Apple has blacklisted the current identity, and only after cleaning up at <https://account.apple.com/account/manage/section/devices>. |
+
+### device identity, and why a failed login is now free
+
+Apple registers a device per `uid`/`devid` pair it sees at the final
+`com.apple.mobileme` step. FindMy.py invents both at random for every fresh
+`AppleAccount`, so an interrupted or rejected login used to burn a device slot
+and then throw the identity away - each retry made the problem worse until
+Apple answered `com.apple.mobileme login failed with status 1: Account limit
+reached`.
+
+The login tool now writes the device identity to the session file **even when
+the login fails** (identity only: no username, no password, login state
+`LOGGED_OUT`), and every later attempt - including `--force` - restores and
+reuses it. Retrying costs zero extra device slots.
+
+If you do hit `Account limit reached`, the tool prints the cleanup steps: go to
+<https://account.apple.com/account/manage/section/devices> and remove the
+phantom entries. They appear as a **"MacBook Pro"** running **macOS 13.4.1**
+with a blank/zero serial number, because that is the identity FindMy.py sends
+(`<MacBookPro18,3> <Mac OS X;13.4.1;22F8>` with `X-Apple-I-SRL-NO: "0"`, from
+`findmy/reports/anisette.py`). Leave your real devices alone.
 
 ## read this before you log in
 
@@ -68,11 +90,13 @@ conservative guesses:
 1. **App-specific passwords do NOT work.** GSA predates them. You must use the
    real Apple ID password plus interactive two-factor authentication. There is no
    headless/unattended way to do this first login.
-2. **Every fresh login registers another trusted device on your Apple ID.** These
-   accumulate, and an Apple ID with too many of them eventually starts refusing
-   sign-ins. Log in once and reuse the saved session. That is exactly why
-   `tools/findmy_login.py` refuses to re-login unless you pass `--force` - don't
-   pass it casually.
+2. **Every login with a *new* device identity registers another device on your
+   Apple ID.** These accumulate, and an Apple ID with too many of them starts
+   refusing sign-ins (`Account limit reached`). Log in once and reuse the saved
+   session; that is why `tools/findmy_login.py` refuses to re-login unless you
+   pass `--force`. Retries are safe: the device identity is saved even when a
+   login fails and is reused by every later attempt, including `--force`. Only
+   `--new-device-identity` costs you a device slot.
 3. **Brand-new Apple IDs are sometimes rejected** with an "account score not high
    enough" error. Nothing in this repo can work around that; use an established
    Apple ID.
@@ -81,7 +105,7 @@ conservative guesses:
 
 | path | what |
 |---|---|
-| `~/.config/openhaystack-web/account.json` | the Apple account session, written **mode 0600** in a `0700` directory |
+| `~/.config/openhaystack-web/account.json` | the Apple account session **or** just the saved device identity, written **mode 0600** in a `0700` directory |
 | `~/.config/openhaystack-web/anisette-libs.bin` | cached anisette libraries, so later starts load locally instead of re-downloading |
 
 Overrides: `$FINDMY_ACCOUNT_FILE` for the session file, `$FINDMY_ANISETTE_LIBS`
@@ -90,6 +114,25 @@ for the libs cache; `$XDG_CONFIG_HOME` is honoured for the directory.
 `account.json` is a **live Apple credential** - treat it like `~/.ssh/id_rsa`. It
 is gitignored and must never be committed. If it is lost or corrupt, the app says
 so and you re-run the login tool.
+
+**It contains your Apple ID password in plaintext.** That is not this repo's
+choice: `findmy`'s `AppleAccount.to_json()` serializes `account.password` as-is,
+and the library needs it to re-authenticate. This is why the file is only ever
+written through the atomic 0600 writer in `lib/findmy_backend.py`, inside a 0700
+directory. Do not copy it to a backup, a shared drive, or a paste bin.
+
+The file has two shapes, distinguished by `login.state`:
+
+| `login.state` | meaning | contains a password? |
+|---|---|---|
+| `3` (`LOGGED_IN`) | a usable session; the app runs | yes |
+| `0` (`LOGGED_OUT`) | device identity only, saved after a failed login | no (`account.username`/`password` are `null`) |
+
+`has_account()` / `load_account()` only accept `LOGGED_IN`. An identity-only
+file still raises `AccountNotConfiguredError` telling you to run
+`tools/findmy_login.py`, and `/api/v1/health` keeps reporting
+`account_configured: false` - the app never mistakes a kept identity for a
+session.
 
 
 # for developers
