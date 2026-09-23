@@ -259,6 +259,26 @@ pipenv run ./tools/locations.py trackers.json --format raw
 | `--hours HOURS` | `24` | how far back to look for reports, must be > 0 |
 | `--format {json,raw}` | `json` | `json` prints `{name: [{lat, lng, accuracy, reported_at}]}`, `raw` prints the same mapping as a python `repr` |
 
+### scanning over Bluetooth, without an Apple account
+
+`tools/scan.py` listens for tags broadcasting in radio range of this machine.
+It needs no Apple ID, no iCloud and no network, so it is the way to check that a
+tag is powered and advertising before blaming the Find My lookup.
+
+```shell
+pipenv run ./tools/scan.py                       # reads ./trackers.json, scans 30s
+pipenv run ./tools/scan.py trackers.json --seconds 90
+pipenv run ./tools/scan.py --all                 # also list other Find My devices
+```
+
+It reports presence and rough distance (from RSSI), not coordinates. Range is
+roughly 10-50 m. A tag that is separated from its owner broadcasts its full
+advertisement key and can be matched against `trackers.json` by name; a tag that
+still considers itself near its owner truncates that key and is only counted as
+an unidentifiable Find My device. On macOS the terminal needs Bluetooth
+permission (System Settings -> Privacy & Security -> Bluetooth).
+
+
 The default output is JSON; `--format raw` prints the python `repr` of the same
 `{name: [...]}` mapping. The config file may be a single JSON object instead of a
 list - it is wrapped into a one-element list.
