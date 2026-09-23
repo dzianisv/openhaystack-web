@@ -7,6 +7,14 @@ trackers.json
 tracker.json
 *.key
 
+# Secrets: FindMy.py session state (Apple ID account + anisette) must never be committed
+account.json
+ani_libs.bin
+anisette-libs.bin
+*.anisette
+*.anisette.json
+anisette.json
+
 # Local environment / build artifacts
 .venv/
 __pycache__/

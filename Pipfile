@@ -8,9 +8,8 @@ eel = "==0.18.2"
 sanic = "*"
 sanic-cors = "*"
 cryptography = "*"
-pyobjc = "*"
 requests = "*"
-openhaybike = {ref = "0868338498fdaf1eee776929d7874cf28cf453be", git = "git+https://gitlab.com/eselac/openhaybike"}
+FindMy = "==0.10.2"
 
 [dev-packages]
 pyinstaller = "*"

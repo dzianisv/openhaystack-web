@@ -26,8 +26,9 @@ class AirTagCrypto:
 
     Only key derivation is on the live code path (via tools/keygen.py and
     tools/flash.py). decrypt_message()/__decode_tag() are vestigial: app.py and
-    backend/app.py fetch and decrypt reports through openhaybike, whose
-    LocationReport.serialize() emits the lat/lng/accuracy keys that web/app.js reads.
+    backend/app.py fetch and decrypt reports through FindMy.py, and
+    lib/trackers.py serializes them into the lat/lng/accuracy/reported_at keys
+    that web/app.js reads.
     """
 
     def __init__(self, private_key: str = None):
@@ -47,9 +48,9 @@ class AirTagCrypto:
         """Return the hashed advertisement key, i.e. base64(SHA256(raw 28-byte advertisement key)).
 
         This is the value Apple's findmy service uses as the report id: it is sent
-        as the search ``ids`` entry and matched against ``report["id"]``
-        (see ``openhaybike.locations.get_locations_of_trackers``). Elsewhere in
-        this repository it is called ``key_id``.
+        as the search ``ids`` entry and matched against ``report["id"]``. It is
+        the same value FindMy.py exposes as ``KeyPair.hashed_adv_key_b64``.
+        Elsewhere in this repository it is called ``key_id``.
         """
         digest = hashes.Hash(hashes.SHA256())
         digest.update(base64.b64decode(self.get_advertisement_key()))
@@ -101,8 +102,8 @@ class AirTagCrypto:
         data = base64.b64decode(payload)
         # NOTE: these absolute offsets are only correct for the canonical 88-byte
         # report payload (4B timestamp + 1B status + 57B eph key + 10B enc data +
-        # 16B GCM tag). Upstream (openhaybike.locations) slices from the END, which
-        # is robust to longer payloads. Unused in this app; see class docstring.
+        # 16B GCM tag). FindMy.py slices from the END, which is robust to longer
+        # payloads. Unused in this app; see class docstring.
         timestamp = int.from_bytes(data[0:4], 'big')
         eph_key = data[5:62]
         shared_key = self.__derive_shared_key_from_private_key_and_eph_key(eph_key)

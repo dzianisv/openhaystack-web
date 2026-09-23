@@ -10,9 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib.icloud import get_icloud_key_cached
-from openhaybike.types import BikeTracker
-from openhaybike.locations import get_locations_of_trackers
+from lib import findmy_backend
+from lib.trackers import get_tracker_locations, validate_tracker_list
 
 DEFAULT_CONFIG = "trackers.json"
 DEFAULT_HOURS = 24.0
@@ -97,23 +96,12 @@ def load_trackers(config_path):
                 f"Config file '{config_path}': entry #{index} must be a JSON object, "
                 f"got {type(tracker).__name__}"
             )
-        for field in ("key_id", "private_key"):
-            value = tracker.get(field)
-            if not isinstance(value, str) or not value.strip():
-                label = tracker.get("name") or tracker.get("key_id") or f"#{index}"
-                raise ValueError(
-                    f"Config file '{config_path}': entry {label} (index {index}) "
-                    f"is missing a non-empty '{field}'"
-                )
-        trackers.append(
-            BikeTracker(
-                name=tracker.get("name", tracker.get("key_id")),
-                key_id=tracker.get("key_id"),
-                advertisement_key=tracker.get("advertisement_key"),
-                private_key=tracker.get("private_key"),
-            )
-        )
-    return trackers
+        trackers.append(tracker)
+
+    try:
+        return validate_tracker_list(trackers)
+    except ValueError as error:
+        raise ValueError(f"Config file '{config_path}': {error}") from None
 
 
 def main(argv=None):
@@ -126,25 +114,25 @@ def main(argv=None):
         return 1
 
     try:
-        icloud_key = get_icloud_key_cached()
-    except (ValueError, TypeError, OSError, IndexError, KeyError) as error:
+        reports = get_tracker_locations(trackers, args.hours)
+    except findmy_backend.AccountNotConfiguredError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    except findmy_backend.AccountStateError as error:
         print(
-            "Error: failed to retrieve the iCloud key (incorrect keychain password?): "
-            f"{type(error).__name__}: {error}",
+            f"Error: the saved Apple session is unusable ({error}). "
+            "Run `python tools/findmy_login.py --force` to sign in again.",
             file=sys.stderr,
         )
         return 1
-
-    reports = get_locations_of_trackers(trackers, icloud_key, args.hours)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
 
     if args.format == "raw":
         print(reports)
     else:
-        print(json.dumps(
-            {name: [location.serialize() for location in locations]
-             for name, locations in reports.items()},
-            indent=4,
-        ))
+        print(json.dumps(reports, indent=4))
     return 0
 
 

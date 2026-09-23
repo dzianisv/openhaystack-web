@@ -23,14 +23,17 @@ on:
       - 'Pipfile'
       - 'Pipfile.lock'
       - '.github/workflows/test-python.yml'
+  # The macOS job below is intentionally not part of the per-PR path filters.
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
 
 env:
   PIPENV_VENV_IN_PROJECT: '1'
   PIPENV_IGNORE_VIRTUALENVS: '1'
 
 jobs:
-  # Syntax-only checks. No project dependencies are installed, so this runs on
-  # Linux even though the app itself is macOS-only (pyobjc).
+  # Syntax-only checks. No project dependencies are installed.
   syntax:
     name: Syntax check
     runs-on: ubuntu-latest
@@ -42,10 +45,16 @@ jobs:
           python-version: '3.12'
       - name: Compile Python sources
         run: python -m compileall -q app.py backend/app.py lib tools tests
+      # Globbed rather than listing files: web/*.js changes over time and a
+      # hardcoded name silently stops checking a renamed file (or hard-fails on
+      # a deleted one).
       - name: Check browser JavaScript
         run: |
-          node --check web/app.js
-          node --check web/password.js
+          set -e
+          for f in web/*.js; do
+            echo "node --check $f"
+            node --check "$f"
+          done
 
   # `pipenv verify` only compares the Pipfile hash against Pipfile.lock, so it
   # needs no dependency install and is safe on Linux.
@@ -63,12 +72,22 @@ jobs:
       - name: Verify Pipfile.lock matches Pipfile
         run: pipenv verify
 
-  # macOS runner is mandatory: Pipfile.lock pins pyobjc 12.2.2 with no
-  # `sys_platform` marker, and pyobjc-core publishes macOS-only wheels, so
-  # `pipenv install --deploy` cannot succeed on Linux.
+  # Linux is the primary test platform. The old macOS pin existed only because
+  # `openhaybike/locations.py` did `import objc`; openhaybike is gone, no Python
+  # file in the repo imports objc, and the pyobjc-* entries left in
+  # Pipfile.lock (transitive via bleak <- FindMy) carry
+  # `sys_platform == 'darwin'` markers, so they are simply skipped here.
+  #
+  # `pipenv sync` (not `pipenv install`) is deliberate: it installs exactly what
+  # Pipfile.lock pins, with hash verification and no re-resolution. Those
+  # platform markers were hand-restored after pipenv resolved the lock on a Mac
+  # and stripped them; a future `pipenv lock` run on macOS will strip them
+  # again. When that happens `pipenv sync` on this runner fails loudly trying to
+  # build pyobjc-core on Linux, instead of the breakage reaching users.
+  # Lock-vs-Pipfile freshness is covered separately by the `lockfile` job.
   test:
-    name: Unit tests (macOS)
-    runs-on: macos-latest
+    name: Unit tests (Linux)
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +104,37 @@ jobs:
           path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-py3.12-pipenv-${{ hashFiles('Pipfile.lock') }}
           restore-keys: ${{ runner.os }}-py3.12-pipenv-
-      - name: Install dependencies
-        run: pipenv install --deploy --dev
+      - name: Install dependencies from the lock file
+        run: pipenv sync --dev
+      - name: Assert no macOS-only package was installed
+        run: |
+          if pipenv run python -c "import objc" 2>/dev/null; then
+            echo "pyobjc was installed on Linux - Pipfile.lock lost its" \
+                 "sys_platform == 'darwin' markers. Re-patch the lock." >&2
+            exit 1
+          fi
+          echo "No pyobjc on Linux, as expected."
+      - name: Run tests
+        run: pipenv run python -m unittest discover -s tests -v
+
+  # macOS is where the app actually runs (eel desktop UI), and it is the only
+  # platform that exercises the pyobjc-* / macholib branch of Pipfile.lock.
+  # Kept off the per-PR path triggers because macOS runners bill at ~10x Linux;
+  # it runs weekly and on demand, which is enough to catch a darwin-side lock
+  # regression without taxing every pull request.
+  test-macos:
+    name: Unit tests (macOS)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pipenv
+        run: pip install pipenv
+      - name: Install dependencies from the lock file
+        run: pipenv sync --dev
       - name: Run tests
         run: pipenv run python -m unittest discover -s tests -v
