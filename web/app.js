@@ -87,9 +87,28 @@ class LocalBackend {
 }
 
 async function fetchLocations() {
-    const trackers = localStorage.getItem('trackers');
     const backend = await LocalBackend.isAvailable() ? new LocalBackend() : new NetworkBackend();
     console.log("Using backend:", backend.constructor.name);
+
+    let trackers = localStorage.getItem('trackers');
+
+    // Seed from the app's trackers.json the first time this browser profile is
+    // used, so the UI and the CLI tools agree instead of starting out empty.
+    // Only the local (eel) backend can read the file; the network backend has
+    // no business shipping private keys over HTTP.
+    if (!trackers && backend instanceof LocalBackend) {
+        try {
+            const seeded = await eel.get_trackers()();
+            if (Array.isArray(seeded) && seeded.length > 0) {
+                trackers = JSON.stringify(seeded, null, 4);
+                localStorage.setItem('trackers', trackers);
+                console.log(`Seeded ${seeded.length} tracker(s) from trackers.json`);
+            }
+        } catch (error) {
+            console.error("Could not seed trackers from trackers.json", error);
+        }
+    }
+
     console.log("Tracker list:", trackers);
 
     if (trackers) {

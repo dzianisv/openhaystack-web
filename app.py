@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 import eel
+import json
 import logging
+from pathlib import Path
 
 from lib import findmy_backend
-from lib.trackers import DEFAULT_WITHIN_LAST_HOURS, get_tracker_locations
+from lib.trackers import (
+    DEFAULT_WITHIN_LAST_HOURS,
+    get_tracker_locations,
+    validate_tracker_list,
+)
+
+TRACKERS_FILE = Path(__file__).resolve().parent / "trackers.json"
 
 # Authentication happens once, out-of-band, via `python tools/findmy_login.py`,
 # which writes the session file that lib.findmy_backend restores. The web UI
@@ -12,6 +20,28 @@ LOGIN_HINT = (
     "Apple account is not set up. Run `python tools/findmy_login.py` in a "
     "terminal to sign in, then retry."
 )
+
+
+@eel.expose
+def get_trackers():
+    """Return the tracker list from trackers.json, or [] if there is none.
+
+    The UI keeps its working copy in localStorage, but that leaves a fresh
+    browser profile with an empty list even though the CLI tools already read a
+    perfectly good trackers.json next to the app. Seeding from that file makes
+    both entry points share one source of truth instead of two.
+    """
+    path = TRACKERS_FILE
+    if not path.exists():
+        return []
+    try:
+        trackers = json.loads(path.read_text(encoding="utf8"))
+        validate_tracker_list(trackers)
+    except (OSError, ValueError) as exc:
+        # Never surface the file contents: it holds tracker private keys.
+        logging.error("Ignoring %s: %s", path, exc)
+        return []
+    return trackers
 
 
 @eel.expose
