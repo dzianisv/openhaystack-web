@@ -13,3 +13,6 @@ FindMy = "==0.10.2"
 
 [dev-packages]
 pyinstaller = "*"
+# Required by tools/export_opentagviewer.py: OpenTagViewer's own exporter writes
+# the bundle manifest as YAML. Dev-only - the desktop app never imports yaml.
+pyyaml = "*"

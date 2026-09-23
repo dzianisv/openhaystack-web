@@ -7,6 +7,11 @@ trackers.json
 tracker.json
 *.key
 
+# Secrets: OpenTagViewer import bundles hold tracker private keys in the clear
+opentagviewer-import.zip
+*-opentagviewer.zip
+openhaystack-tags.zip
+
 # Secrets: FindMy.py session state (Apple ID account + anisette) must never be committed
 account.json
 ani_libs.bin

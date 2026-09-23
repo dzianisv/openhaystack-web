@@ -1,8 +1,20 @@
 # intro
 
-An app allows one to see the locations of the open haystack trackers
+See the locations of your OpenHaystack trackers - on the desktop, and on Android.
 
 ![](img/b4add158-6f94-4d46-90cd-4ab8b51f82df.webp)
+
+| where | what you run | needs a server? |
+|---|---|---|
+| macOS / Linux desktop | this repo (`./run.sh`) | no |
+| Android | [OpenTagViewer](https://github.com/parawanderer/OpenTagViewer) + `tools/export_opentagviewer.py` | no |
+| iOS | nothing viable - see [docs/LLD.md](docs/LLD.md) §7 | - |
+
+Both apps talk to Apple directly with their own copy of the keys. Nothing runs
+in the background, and there is no service to keep alive.
+
+Design notes: [docs/PRD.md](docs/PRD.md) (why we did not write a mobile app),
+[docs/LLD.md](docs/LLD.md) (how the Android path works end to end).
 
 # omg. how to use it?
 
@@ -10,7 +22,10 @@ An app allows one to see the locations of the open haystack trackers
 ./run.sh
 ```
 
-Click on the Trackers button and put the trackers configuration, for example
+If a `trackers.json` exists next to `app.py`, the UI seeds its tracker list from
+it on first load, so the map is populated without pasting anything. Otherwise
+click **Trackers** and paste the configuration:
+
 ```json
 [
     {
@@ -24,12 +39,109 @@ Click on the Trackers button and put the trackers configuration, for example
 
 Then tracker positions has to be displayed on the map.
 
+Seeding is deliberately limited to the local (`eel`) backend. The REST backend
+never ships private keys to a browser it does not control.
+
 The web UI never asks for a password. Authentication is a **one-time** Apple ID
 login done in a terminal - see [sign in to Apple (once)](#sign-in-to-apple-once)
 below. Do that before the first run, or the UI will just tell you to.
 
 Existing trackers keep working: the `private_key` values you already flashed are
 unchanged, so **no re-flashing is required** by this migration.
+
+# see your tags on Android
+
+There is no Android app in this repo and there is not going to be one. Instead
+we convert `trackers.json` into an import bundle for
+**[OpenTagViewer](https://github.com/parawanderer/OpenTagViewer)** (MIT), which
+runs the whole Find My stack on the phone - no server, no Mac, no tunnel. It
+already supports self-generated OpenHaystack tags, so no upstream changes are
+needed. The reasoning is in [docs/PRD.md](docs/PRD.md).
+
+**Verified working** on a real device with real tags.
+
+## 1. build the bundle
+
+The bundle is written by *OpenTagViewer's own* exporter rather than a
+reimplementation here, because the format has details you would not guess. That
+code cannot be `pip install`ed (upstream sets `package = false`), so point the
+tool at a clone:
+
+```shell
+git clone --depth 1 https://github.com/parawanderer/OpenTagViewer.git /tmp/otv
+pipenv run python tools/export_opentagviewer.py trackers.json \
+    --exporter-path /tmp/otv/python \
+    -o ~/openhaystack-tags.zip
+```
+
+Set `$OPENHAYSTACK_OTV_EXPORTER` to that `python/` directory to skip
+`--exporter-path` every time.
+
+| argument | what it does |
+|---|---|
+| `trackers` | tracker list to convert. Default `trackers.json`. |
+| `--exporter-path PATH` | OpenTagViewer's `python/` directory. Defaults to `$OPENHAYSTACK_OTV_EXPORTER`. |
+| `-o`, `--output` | where to write the bundle. Default `opentagviewer-import.zip`. |
+
+What comes out - one zip, a few hundred bytes:
+
+```
+openhaystack-tags.zip
+├── OPENTAGVIEWER.yml                         # format version 0.0.3
+└── CustomAccessories/
+    ├── openhaystack-<id>.json                # one per tracker
+    └── ...
+```
+
+Each accessory is `{type: "custom_rolling_key_accessory", identifier, name,
+private_keys: [...]}`. **Import the zip, not the JSON** - upstream's importer
+reads it through `ZipInputStream` and there is no single-file path. The manifest
+is mandatory: its version is what tells the importer the bundle may contain
+self-generated tags.
+
+The file is created mode `0600` via `os.open`, with the mode applied at creation
+time rather than `chmod`-ed afterwards, so there is never a moment where a file
+full of private keys is world-readable.
+
+## 2. install the app
+
+Download the APK from
+[the releases page](https://github.com/parawanderer/OpenTagViewer/releases/latest)
+(~103 MB, universal) and tap it; Android will ask you to allow installs from that
+source. Or over USB, with *Developer options -> USB debugging* enabled:
+
+```shell
+adb install ~/Downloads/OpenTagViewer-1.1.1.apk
+adb push ~/openhaystack-tags.zip /sdcard/Download/
+```
+
+Android only - there is no desktop build of OpenTagViewer. On the desktop you
+use this repo.
+
+## 3. import
+
+1. Open the app and sign in with your Apple ID. Prefer the **trusted-device**
+   2FA code; the SMS path has an open upstream bug
+   ([#236](https://github.com/parawanderer/OpenTagViewer/issues/236)).
+2. First launch downloads Apple's ADI libraries (~11 MB, over the network, from
+   Apple's own CDN). They are never bundled into the APK.
+3. Import `openhaystack-tags.zip`. Your tags appear on the map.
+
+**Then delete the bundle from both the phone and the computer.** It contains
+private keys in the clear, and once imported it has no further use.
+
+```shell
+rm ~/openhaystack-tags.zip
+adb shell rm /sdcard/Download/openhaystack-tags.zip
+```
+
+A tag with no recent reports shows up empty. That means nobody's iPhone has been
+near it inside the window - it is not an import failure. Confirm with
+`tools/scan.py` (see [scanning over Bluetooth](#scanning-over-bluetooth-without-an-apple-account)),
+which needs no Apple account at all.
+
+Both apps read the same keys independently, so importing changes nothing on the
+desktop side.
 
 # sign in to Apple (once)
 
@@ -60,6 +172,8 @@ usage: tools/findmy_login.py [-h] [--account-file ACCOUNT_FILE] [--force]
 | `--account-file ACCOUNT_FILE` | Where to store the session. Default: `$FINDMY_ACCOUNT_FILE`, else `$XDG_CONFIG_HOME/openhaystack-web/account.json`, else `~/.config/openhaystack-web/account.json`. |
 | `--force` | Log in again even when a valid session already exists. Without it the script detects the existing session, prints `Nothing to do.` and exits 0. It reuses the stored device identity, so it does **not** register another device. |
 | `--new-device-identity` | Throws the stored device identity away and mints a new one, which makes Apple register **another** device on your Apple ID. This is the expensive action that causes `Account limit reached`. Only for the case where Apple has blacklisted the current identity, and only after cleaning up at <https://account.apple.com/account/manage/section/devices>. |
+| `--2fa-method N` | Pick the 2FA method up front, by its number in the printed list, instead of being asked. With one method available it is chosen automatically either way. |
+| `--code-file PATH` | Read the 6-digit code from a file instead of the terminal, polling until it appears. The file is deleted as soon as it is read, so a code cannot be replayed. For unattended runs. |
 
 ### device identity, and why a failed login is now free
 
@@ -171,9 +285,13 @@ brew install openocd
 pipenv run python -m unittest discover -s tests
 ```
 
-48 tests, no network and no Apple credentials required (the Find My calls are
+74 tests, no network and no Apple credentials required (the Find My calls are
 mocked). Nothing in `tests/` imports `objc` or touches the macOS keychain, so the
 suite runs on Linux as well as macOS - CI runs it on `ubuntu-latest`.
+
+Two of them are skipped unless `$OPENHAYSTACK_OTV_EXPORTER` points at a
+OpenTagViewer clone: they assert the real bundle contents, which needs upstream's
+exporter. Everything else about the export tool is tested without it.
 
 ## generate keys
 
@@ -391,6 +509,7 @@ warning when you do).
 | `~/.config/openhaystack-web/account.json` | `0600` in a `0700` dir | Apple ID session from `tools/findmy_login.py`. A live credential. Gitignored; never commit it. Override with `$FINDMY_ACCOUNT_FILE`. |
 | `~/.config/openhaystack-web/anisette-libs.bin` | `0600` in a `0700` dir | cached anisette libraries, avoids a download on every start. Override with `$FINDMY_ANISETTE_LIBS`. |
 | `./trackers.json` | - | tracker private keys. Gitignored; never commit it. |
+| `./opentagviewer-import.zip` | `0600` | Android import bundle from `tools/export_opentagviewer.py`, named by `-o`. Contains private keys. Delete it after importing. Gitignored. |
 
 `$XDG_CONFIG_HOME` is honoured for the config directory. Writes are atomic
 (`mkstemp` -> `chmod 0600` -> `fsync` -> `os.replace`), so an interrupted write can
