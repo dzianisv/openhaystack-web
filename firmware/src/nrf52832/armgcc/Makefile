@@ -311,6 +311,9 @@ help-msg::
 
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
 
+# Before the SDK include: a bad FMDN interval must fail with no nRF SDK downloaded.
+include $(NRF_ROOT)/fmdn_interval.mk
+
 # define_target snapshots SRC_FILES, so this has to be above that include.
 ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
 SRC_FILES += $(PROJ_DIR)/fmdn_state.c

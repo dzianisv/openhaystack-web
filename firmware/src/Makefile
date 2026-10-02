@@ -19,6 +19,14 @@ ADVERTISING_INTERVAL ?= 1000
 RANDOM_ROTATE_KEYS ?= 1
 FIND_NETWORK ?= APPLE
 
+# Resolves FIND_NETWORK / KEY_ROTATION_INTERVAL without entering the chip
+# makefile. `make -n` still runs recipes that call $(MAKE), and those
+# include the nRF SDK, so this target is what CI can check with no SDK.
+.PHONY: check-fmdn-interval
+check-fmdn-interval:
+	echo KEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)
+	echo FIND_NETWORK=$(FIND_NETWORK)
+
 GNU_INSTALL_ROOT ?= $(CURDIR)/nrf-sdk/gcc-arm-none-eabi-6-2017-q2-update
 
 
@@ -37,6 +45,7 @@ help:
 	@echo "Targets:"
 	@echo "  all        - build all targets"
 	@echo "  clean      - clean all targets"
+	@echo "  check-fmdn-interval - print the resolved FMDN interval (no SDK)"
 
 # Define a recipe to build each target individually
 define build_target

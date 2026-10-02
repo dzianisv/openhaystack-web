@@ -212,15 +212,19 @@ int main(void) {
         import subprocess
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         fw = os.path.join(root, "firmware", "src")
+        # check-fmdn-interval resolves the guard before any chip makefile
+        # include, so this does not need a downloaded nRF SDK. `make -n`
+        # still executes $(MAKE) recipes, which is why the real target
+        # cannot be the probe.
         bad = subprocess.run(
-            ["make", "-C", fw, "-n", "nrf52832_xxaa", "FIND_NETWORK=GOOGLE_FMDN", "KEY_ROTATION_INTERVAL=3600"],
+            ["make", "-C", fw, "-n", "check-fmdn-interval", "FIND_NETWORK=GOOGLE_FMDN", "KEY_ROTATION_INTERVAL=3600"],
             capture_output=True,
             text=True,
         )
         self.assertNotEqual(bad.returncode, 0)
         self.assertIn("1024", bad.stderr + bad.stdout)
         good = subprocess.run(
-            ["make", "-C", fw, "-n", "nrf52832_xxaa", "FIND_NETWORK=GOOGLE_FMDN"],
+            ["make", "-C", fw, "-n", "check-fmdn-interval", "FIND_NETWORK=GOOGLE_FMDN"],
             capture_output=True,
             text=True,
         )
