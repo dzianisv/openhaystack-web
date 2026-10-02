@@ -311,6 +311,10 @@ help-msg::
 
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
 
+# define_target snapshots SRC_FILES, so this has to be above that include.
+ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
+SRC_FILES += $(PROJ_DIR)/fmdn_state.c
+endif
 
 include $(TEMPLATE_PATH)/Makefile.common
 

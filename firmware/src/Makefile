@@ -3,7 +3,18 @@
 HAS_DEBUG ?= 0
 HAS_BATTERY ?= 0
 MAX_KEYS ?= 500
-KEY_ROTATION_INTERVAL ?= 3600
+# APPLE keeps the historical default. GOOGLE_FMDN and DUAL are the spec
+# window, 2^10 seconds. A different interval walks off the EID table.
+ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
+  ifeq ($(origin KEY_ROTATION_INTERVAL),command line)
+    ifneq ($(KEY_ROTATION_INTERVAL),1024)
+      $(error FIND_NETWORK=$(FIND_NETWORK) requires KEY_ROTATION_INTERVAL=1024 (K=10); got $(KEY_ROTATION_INTERVAL))
+    endif
+  endif
+  KEY_ROTATION_INTERVAL := 1024
+else
+  KEY_ROTATION_INTERVAL ?= 3600
+endif
 ADVERTISING_INTERVAL ?= 1000
 RANDOM_ROTATE_KEYS ?= 1
 FIND_NETWORK ?= APPLE

@@ -5,7 +5,8 @@ GROUP(-lgcc -lc -lnosys)
 
 MEMORY
 {
-  FLASH (rx) : ORIGIN = 0x26000, LENGTH = 0x5a000
+  /* Ends at 0x7F000. 0x7F000..0x80000 is the FMDN beacon-counter page. */
+  FLASH (rx) : ORIGIN = 0x26000, LENGTH = 0x59000
   RAM (rwx) :  ORIGIN = 0x200022b8, LENGTH = 0xdd48
 }
 

@@ -58,4 +58,5 @@ void set_battery(uint8_t battery_level);
 uint8_t ble_set_advertisement_key(const char *key);
 #if FIND_NETWORK != FIND_NETWORK_APPLE
 uint8_t ble_set_advertisement_fmdn(const uint8_t eid[20], uint8_t flag_xor);
+void ble_stop_advertising(void);
 #endif

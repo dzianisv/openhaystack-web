@@ -219,11 +219,13 @@ def compute_table(
     return [compute_slot(eik, base + i * window, k) for i in range(count)]
 
 
-def service_data_advert(eid: bytes, hashed_flags_byte: int, frame_type: int = 0x41) -> bytes:
+def service_data_advert(eid: bytes, hashed_flags_byte: int, frame_type: int = 0x40) -> bytes:
     """Legacy ADV payload: flags AD + FEAA service data, matching spec Table 15.
 
-    Frame type 0x41 is what this firmware advertises. The spec uses 0x40 for
-    normal operation and 0x41 for unwanted tracking protection mode.
+    Frame type 0x40 is normal mode, which is what the firmware advertises.
+    0x41 is unwanted tracking protection mode and is not the default: that
+    mode also requires the UTP flag and a fixed address, which this tag
+    does not implement.
     """
     if len(eid) != EID_LEN:
         raise ValueError("EID must be 20 bytes")
@@ -308,10 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.count < 1 or args.count > 2048:
         parser.error("count must be 1..2048")
     if args.k != ROTATION_EXPONENT:
-        print(
-            f"warning: spec fixes K={ROTATION_EXPONENT}; generating K={args.k}",
-            file=sys.stderr,
-        )
+        parser.error(f"spec fixes K={ROTATION_EXPONENT}; refusing K={args.k}")
     slots = compute_table(args.eik, args.count, args.start, args.k)
     header = render_c_header(slots, args.k)
     if args.out:

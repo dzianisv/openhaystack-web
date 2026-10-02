@@ -26,14 +26,16 @@ size_t offline_finding_adv_len = sizeof(offline_finding_adv);
 
 #if FIND_NETWORK != FIND_NETWORK_APPLE
 /* Find Hub Network accessory spec, Table 15 (160-bit curve).
- * Octet 7 is 0x41 as required for this build. The spec uses 0x40 in normal
- * mode and 0x41 in unwanted tracking protection mode. Hashed flags are
- * clear_flags XOR SHA256(r)[-1]; clear_flags starts at 0.
- * Length 0x19 = type + UUID + frame + 20-byte EID + hashed flags.
+ * Octet 7 is 0x40: normal mode. 0x41 is unwanted-tracking-protection mode.
+ * That mode also requires clear-flags bit 7 set and a fixed FHN address
+ * (rotated at most every 24 hours). This build leaves bit 7 clear and
+ * changes the non-resolvable address with every EID, so it must not
+ * claim 0x41. Hashed flags are clear_flags XOR SHA256(r)[-1]; clear_flags
+ * starts at 0. Length 0x19 = type + UUID + frame + 20-byte EID + hashed flags.
  */
 #define FMDN_ADV_EID_OFFSET 8
 #define FMDN_ADV_FLAGS_OFFSET 28
-#define FMDN_FRAME_TYPE 0x41
+#define FMDN_FRAME_TYPE 0x40
 /* Spec numbers flag bits from the MSB: bit 0 is 0x80, bit 7 is 0x01. */
 #define FMDN_FLAG_BATTERY_MASK 0x06
 #define FMDN_FLAG_BATTERY_NORMAL 0x02
@@ -273,6 +275,23 @@ static void fill_fmdn_template(const uint8_t *eid, uint8_t flag_xor)
 	fmdn_flag_xor = flag_xor;
 	memcpy(&fmdn_adv[FMDN_ADV_EID_OFFSET], eid, 20);
 	fmdn_adv[FMDN_ADV_FLAGS_OFFSET] = fmdn_clear_flags ^ fmdn_flag_xor;
+}
+
+void ble_stop_advertising(void)
+{
+#if NRF_SDK_VERSION >= 15
+	if (adv_handle == BLE_GAP_ADV_SET_HANDLE_NOT_SET) {
+		return;
+	}
+	{
+		int err_code = sd_ble_gap_adv_stop(adv_handle);
+		if (err_code != NRF_ERROR_INVALID_STATE) {
+			APP_ERROR_CHECK(err_code);
+		}
+	}
+#else
+	(void)sd_ble_gap_adv_stop();
+#endif
 }
 
 uint8_t ble_set_advertisement_fmdn(const uint8_t eid[20], uint8_t flag_xor)

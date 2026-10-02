@@ -272,6 +272,9 @@ help-msg::
 
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
 
+ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
+SRC_FILES += $(PROJ_DIR)/fmdn_state.c
+endif
 
 include $(TEMPLATE_PATH)/Makefile.common
 

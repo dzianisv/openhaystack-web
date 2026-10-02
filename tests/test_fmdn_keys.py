@@ -162,13 +162,84 @@ class HeaderAndAdvertTest(unittest.TestCase):
 
     def test_service_data_advert_layout(self):
         eid = bytes(range(20))
-        adv = service_data_advert(eid, 0xAB, frame_type=0x41)
+        adv = service_data_advert(eid, 0xAB)
         self.assertEqual(adv[0:3], b"\x02\x01\x06")
         self.assertEqual(adv[3], 0x19)
-        self.assertEqual(adv[4:8], b"\x16\xaa\xfe\x41")
+        self.assertEqual(adv[4:8], b"\x16\xaa\xfe\x40")
         self.assertEqual(adv[8:28], eid)
         self.assertEqual(adv[28], 0xAB)
         self.assertEqual(len(adv), 29)
+
+    def test_firmware_advertises_normal_mode_not_utp(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ble = open(os.path.join(root, "firmware", "src", "ble_stack.c"), encoding="utf-8").read()
+        self.assertIn("#define FMDN_FRAME_TYPE 0x40", ble)
+        self.assertNotIn("#define FMDN_FRAME_TYPE 0x41", ble)
+
+    def test_slot_selection_rejects_wrap_and_pre_window(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        header = os.path.join(root, "firmware", "src", "fmdn_clock.h")
+        src = r"""
+#include <stdint.h>
+#include "fmdn_clock.h"
+int main(void) {
+    if (fmdn_slot_for_counter(0, 0, 1024, 8) != 0) return 1;
+    if (fmdn_slot_for_counter(1024, 0, 1024, 8) != 1) return 2;
+    if (fmdn_slot_for_counter(7 * 1024, 0, 1024, 8) != 7) return 3;
+    if (fmdn_slot_for_counter(8 * 1024, 0, 1024, 8) != -1) return 4;
+    if (fmdn_slot_for_counter(100, 1024, 1024, 8) != -1) return 5;
+    if (fmdn_slot_for_counter(0, 0, 3600, 8) == 1) return 6;
+    return 0;
+}
+"""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "slot.c")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(src)
+            bin_path = os.path.join(tmp, "slot")
+            build = subprocess.run(
+                ["cc", "-Wall", "-Werror", "-I", os.path.dirname(header), path, "-o", bin_path],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(build.returncode, 0, build.stderr)
+            run = subprocess.run([bin_path], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+
+    def test_fmdn_make_forces_k10_and_rejects_3600(self):
+        import subprocess
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        fw = os.path.join(root, "firmware", "src")
+        bad = subprocess.run(
+            ["make", "-C", fw, "-n", "nrf52832_xxaa", "FIND_NETWORK=GOOGLE_FMDN", "KEY_ROTATION_INTERVAL=3600"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("1024", bad.stderr + bad.stdout)
+        good = subprocess.run(
+            ["make", "-C", fw, "-n", "nrf52832_xxaa", "FIND_NETWORK=GOOGLE_FMDN"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(good.returncode, 0, good.stderr)
+        self.assertIn("KEY_ROTATION_INTERVAL=1024", good.stdout)
+        self.assertIn("FIND_NETWORK=GOOGLE_FMDN", good.stdout)
+
+    def test_tool_rejects_non_spec_rotation_exponent(self):
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tool = os.path.join(root, "tools", "fmdn_keys.py")
+        proc = subprocess.run(
+            [sys.executable, tool, "--eik", "11" * 32, "--k", "9"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("K=10", proc.stderr)
 
     def test_parse_eik_rejects_the_wrong_length(self):
         self.assertEqual(parse_eik("11" * 32), PLACEHOLDER_EIK)

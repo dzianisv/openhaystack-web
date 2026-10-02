@@ -37,6 +37,16 @@ ifeq ($(HAS_DCDC), 1)
 endif
 
 KEY_ROTATION_INTERVAL ?= 0
+# Direct `make -C nrf52832/armgcc` does not pass the top-level default.
+# FMDN modes must be K=10 or the precomputed table is not the beacon clock.
+ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
+  ifeq ($(KEY_ROTATION_INTERVAL),0)
+    KEY_ROTATION_INTERVAL := 1024
+  endif
+  ifneq ($(KEY_ROTATION_INTERVAL),1024)
+    $(error FIND_NETWORK=$(FIND_NETWORK) requires KEY_ROTATION_INTERVAL=1024 (2^10 seconds); got $(KEY_ROTATION_INTERVAL))
+  endif
+endif
 ifneq ($(KEY_ROTATION_INTERVAL), 0)
 	CFLAGS += -DKEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)
 	ASMFLAGS += -DKEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)

@@ -58,8 +58,50 @@
 
 #if FIND_NETWORK != FIND_NETWORK_APPLE
 #include "fmdn_eid_table.h"
+#include "fmdn_clock.h"
+#include "fmdn_state.h"
 _Static_assert(FMDN_EID_COUNT > 0, "FMDN EID table is empty");
 _Static_assert(FMDN_EID_LEN == 20, "FMDN EID must be 20 bytes");
+_Static_assert(FMDN_ROTATION_EXPONENT == 10, "FMDN spec fixes K=10");
+_Static_assert(FMDN_TABLE_STEP_SEC == (1u << FMDN_ROTATION_EXPONENT), "table step must be 2^K");
+_Static_assert(KEY_ROTATION_INTERVAL == (int)FMDN_TABLE_STEP_SEC, "GOOGLE_FMDN/DUAL require KEY_ROTATION_INTERVAL=1024");
+static int fmdn_slot = -1;
+static uint32_t fmdn_counter;
+/* First advertise call publishes the restored slot. Later calls advance. */
+static uint8_t fmdn_boot_advertise = 1;
+
+static void fmdn_restore(void)
+{
+    fmdn_counter = fmdn_state_load_or_init(FMDN_TABLE_START_TS, FMDN_TABLE_STEP_SEC);
+    fmdn_slot = fmdn_slot_for_counter(fmdn_counter, FMDN_TABLE_START_TS,
+                                      FMDN_TABLE_STEP_SEC, FMDN_EID_COUNT);
+    if (fmdn_slot < 0) {
+        COMPAT_NRF_LOG_INFO("[FMDN] counter %u is outside the table; not advertising", fmdn_counter);
+    } else {
+        COMPAT_NRF_LOG_INFO("[FMDN] slot %d counter %u", fmdn_slot, fmdn_counter);
+    }
+}
+
+static void fmdn_advance(void)
+{
+    uint32_t next;
+
+    if (fmdn_slot < 0) {
+        return;
+    }
+    if (fmdn_counter > (UINT32_MAX - FMDN_TABLE_STEP_SEC)) {
+        fmdn_slot = -1;
+        fmdn_state_request_save(fmdn_counter);
+        return;
+    }
+    next = fmdn_counter + FMDN_TABLE_STEP_SEC;
+    fmdn_counter = next;
+    fmdn_slot = fmdn_slot_for_counter(next, FMDN_TABLE_START_TS,
+                                      FMDN_TABLE_STEP_SEC, FMDN_EID_COUNT);
+    /* Persist the counter even when it leaves the table, so a reboot does
+     * not walk back into an expired window or restart at slot 0. */
+    fmdn_state_request_save(fmdn_counter);
+}
 #endif
 
 #if defined(BATTERY_LEVEL) && BATTERY_LEVEL == 1
@@ -208,12 +250,29 @@ void update_battery_level(void)
 
 void set_and_advertise_next_key(void *p_context)
 {
+#if FIND_NETWORK == FIND_NETWORK_GOOGLE_FMDN
+    (void)p_context;
+    if (!fmdn_boot_advertise) {
+        fmdn_advance();
+    }
+    fmdn_boot_advertise = 0;
+    #if defined(BATTERY_LEVEL) && BATTERY_LEVEL == 1
+        update_battery_level();
+    #endif
+    if (fmdn_slot < 0) {
+        ble_stop_advertising();
+        COMPAT_NRF_LOG_INFO("[FMDN] lifetime exceeded; advertising stopped");
+        return;
+    }
+    ble_set_advertisement_fmdn(fmdn_eid[fmdn_slot], fmdn_flag_xor[fmdn_slot]);
+    COMPAT_NRF_LOG_INFO("[FMDN] advertising slot %d", fmdn_slot);
+    return;
+#else
 #if FIND_NETWORK == FIND_NETWORK_APPLE && defined(RANDOM_ROTATE_KEYS) && RANDOM_ROTATE_KEYS == 1
         // Update key index for next advertisement...Back to zero if out of range
         current_index =  randmod(last_filled_index + 1);
 #else
         // rotate to next key in the list modulo the last filled index
-        // FMDN walks the EID table in order so slot i stays tied to its window.
         current_index = (current_index + 1) % (last_filled_index + 1);
 #endif
 
@@ -229,15 +288,18 @@ void set_and_advertise_next_key(void *p_context)
     // Set key to be advertised. APPLE is the original call.
 #if FIND_NETWORK == FIND_NETWORK_APPLE
     ble_set_advertisement_key(public_key[current_index]);
-#elif FIND_NETWORK == FIND_NETWORK_GOOGLE_FMDN
-    ble_set_advertisement_fmdn(fmdn_eid[current_index], fmdn_flag_xor[current_index]);
 #else
-    if (dual_show_fmdn) {
-        int fmdn_mod = FMDN_EID_COUNT;
-        int fi = current_index % fmdn_mod;
-        ble_set_advertisement_fmdn(fmdn_eid[fi], fmdn_flag_xor[fi]);
+    if (!fmdn_boot_advertise) {
+        fmdn_advance();
+    }
+    fmdn_boot_advertise = 0;
+    if (dual_show_fmdn && fmdn_slot >= 0) {
+        ble_set_advertisement_fmdn(fmdn_eid[fmdn_slot], fmdn_flag_xor[fmdn_slot]);
     } else {
         int apple_mod = apple_last_filled_index + 1;
+        if (fmdn_slot < 0) {
+            dual_show_fmdn = 0;
+        }
         if (apple_mod < 1) {
             apple_mod = 1;
         }
@@ -245,6 +307,7 @@ void set_and_advertise_next_key(void *p_context)
     }
 #endif
     COMPAT_NRF_LOG_INFO("Rotating key: %d", current_index);
+#endif
 }
 
 #if FIND_NETWORK == FIND_NETWORK_DUAL
@@ -253,10 +316,10 @@ static void fmdn_flip_handler(void *p_ctx)
     (void)p_ctx;
     dual_show_fmdn ^= 1;
     /* Re-advertise the current slot on the other network. Do not advance the index. */
-    if (dual_show_fmdn) {
-        int fi = current_index % FMDN_EID_COUNT;
-        ble_set_advertisement_fmdn(fmdn_eid[fi], fmdn_flag_xor[fi]);
+    if (dual_show_fmdn && fmdn_slot >= 0) {
+        ble_set_advertisement_fmdn(fmdn_eid[fmdn_slot], fmdn_flag_xor[fmdn_slot]);
     } else {
+        dual_show_fmdn = 0;
         int apple_mod = apple_last_filled_index + 1;
         if (apple_mod < 1) {
             apple_mod = 1;
@@ -383,6 +446,9 @@ static void power_management_init(void)
  */
 static void idle_state_handle(void)
 {
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    fmdn_state_flush_if_pending();
+#endif
     if (NRF_LOG_PROCESS() == false)
     {
         #if NRF_SDK_VERSION >= 15
@@ -469,11 +535,17 @@ int main(void)
     // Initialize the timer module.
     timers_init();
 
-    // Configure the timer for key rotation if there are multiple keys
+    // APPLE rotates only when more than one key is patched in.
+    // FMDN always runs the 1024-second timer so the table cannot be walked
+    // as a circular list, including a one-slot table.
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    timer_config();
+#else
     if (last_filled_index > 0)
     {
         timer_config();
     }
+#endif
 
     // Configure periodic status LED blink
     nrf_gpio_cfg_output(STATUS_LED_PIN);
@@ -483,8 +555,16 @@ int main(void)
     // Initialize the power management module.
     power_management_init();
 
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    /* NVMC write. Must run before the SoftDevice owns flash. */
+    fmdn_restore();
+#endif
+
     // Initialize the BLE stack.
     ble_stack_init();
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    fmdn_state_sd_is_enabled();
+#endif
 
     // Initialize advertising.
     ble_advertising_init();
@@ -503,8 +583,8 @@ int main(void)
 
     COMPAT_NRF_LOG_INFO("Starting advertising");
 
-#if FIND_NETWORK != FIND_NETWORK_APPLE
-    /* Increment-first rotation would skip slot 0. Slot 0 is the tool's --start window. */
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+    /* Same first Apple index as before: increment from -1 lands on key 0. */
     current_index = -1;
 #endif
 

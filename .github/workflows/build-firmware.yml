@@ -35,6 +35,13 @@ jobs:
       - name: Build
         working-directory: firmware/src
         run: make all
+      - name: Build nrf52832 GOOGLE_FMDN
+        working-directory: firmware/src
+        run: |
+          make nrf52832_xxaa-clean
+          make nrf52832_xxaa FIND_NETWORK=GOOGLE_FMDN
+          grep -q 'FIND_NETWORK=GOOGLE_FMDN' release/nrf52832_xxaa.txt
+          grep -q 'KEY_ROTATION_INTERVAL=1024' release/nrf52832_xxaa.txt
       - uses: actions/upload-artifact@v4
         with:
           name: firmware
