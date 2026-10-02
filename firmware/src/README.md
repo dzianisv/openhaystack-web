@@ -106,6 +106,50 @@ This section describes key Makefile variables you can adjust to customize the fi
 - **BOARD**: Specifies the custom board configuration; defaults to `custom_board` (see `custom_board.h`), but can be overridden with your board's configuration. For example, set `BOARD=yj17024` for the nRF52832 device.
 - **ADV_KEYS_FILE**: Specifies the file containing the keys to be flashed to the device.
 - **GNU_INSTALL_ROOT**: Path to the GNU toolchain; eg: ../../nrf-sdk/gcc-arm-none-eabi-6-2017-q2-update/bin/
+- **FIND_NETWORK**: `APPLE` (default), `GOOGLE_FMDN`, or `DUAL`. Default keeps the Apple manufacturer-data advert. See below.
+
+Google Find Hub (FMDN) example. The spec rotates every 1024 seconds (`K = 10`), so set the interval to match or the table walks off the clock window Find Hub will try:
+
+```bash
+cd nrf52832/armgcc
+make clean
+make nrf52832_xxaa FIND_NETWORK=GOOGLE_FMDN KEY_ROTATION_INTERVAL=1024
+```
+
+Regenerate the EID table before that build if the placeholder key is not the one you registered. Run this from the repo root:
+
+```bash
+python3 tools/fmdn_keys.py --eik <64 hex chars> --count 8 --start 0 \
+  --out firmware/src/fmdn_eid_table.h
+```
+
+## Find Hub Network (FMDN) mode
+
+`FIND_NETWORK=GOOGLE_FMDN` advertises a legacy Find Hub frame instead of the Apple offline-finding frame:
+
+- Flags AD `02 01 06`, then service data for UUID `0xFEAA` (bytes `AA FE`).
+- Frame type `0x41`, then the 20-byte EID, then one hashed-flags byte. 29 bytes total, so it fits a legacy advert.
+- The EID table is `firmware/src/fmdn_eid_table.h`, produced by `tools/fmdn_keys.py`. The firmware does not compute the EID. It walks the table in order on `KEY_ROTATION_INTERVAL` (it does not use `RANDOM_ROTATE_KEYS`, so slot i stays tied to that window). The first advertisement is slot 0 (the tool's `--start` window). Later slots are one spec window apart (`2^10` seconds).
+- Hashed flags = clear flags XOR the low byte of `SHA256(r)`, with `r` aligned to 160 bits. Clear flags start at 0 (battery indication unsupported). `HAS_BATTERY=1` maps the measured level into spec bits 5-6, numbered from the MSB, and XORs again. The SoftDevice copies the advert when advertising is restarted, so the new flags go on air at the next rotation.
+- The address is a non-resolvable private address taken from the EID, so it changes with the slot.
+
+`FIND_NETWORK=DUAL` keeps the Apple advert and also the FMDN advert. One legacy packet cannot hold both, so a 2-second timer swaps which one is on air. The key index still advances on `KEY_ROTATION_INTERVAL`.
+
+`FIND_NETWORK=APPLE` does not include the FMDN advertiser. Behavior matches the previous firmware.
+
+### Provisioning limits
+
+This is a broadcast-only tag. It is not a Find Hub accessory until someone registers it, and this firmware cannot do that registration itself.
+
+- The phone, not the tag, chooses the 32-byte ephemeral identity key during provisioning and writes it to the Beacon Actions characteristic (data ID `0x02`), encrypted with the Fast Pair account key. There is no Fast Pair service and no GATT here, so the tag cannot receive an EIK, an account key, or a clock.
+- Find Hub only returns locations to the owner who registered that EIK. A scanner can see the `FEAA` frame without the tag ever appearing in the owner's Find Hub. The workable path is the GoogleFindMyTools-style one: generate the EIK on the owner side, register the accessory with the Google account out of band, precompute the table with `tools/fmdn_keys.py`, and flash a build that contains that table.
+- The backend stores derived keys, not the EIK. Recovery is the first 8 bytes of `SHA256(EIK || 0x01)`, ring is `SHA256(EIK || 0x02)`, unwanted-tracking protection is `SHA256(EIK || 0x03)`. This firmware does not store or serve those, so ring, EIK recovery, and unwanted-tracking activation from the network do not work.
+- One account key is the owner account key and must not be dropped until factory reset. This build has no account-key slots.
+- The EID is a function of the beacon time counter, not of the next slot in a list. Slot 0 is whatever `--start` you passed (default 0, then masked to a 1024-second boundary). After power loss the tag starts at slot 0 again. The owner's resolver has to search a window wide enough to cover that, and a table that is rotated every `KEY_ROTATION_INTERVAL` seconds only stays aligned with Find Hub if that interval is 1024. The spec also wants the rotation instant jittered by 1 to 204 seconds. This firmware does not jitter.
+- Locator-tag rules this build does not implement: Fast Pair pairing, reverting to factory settings if FHN is not provisioned within 5 minutes, non-discoverable Fast Pair frames after power loss so the phone can sync the clock, and a button chord to stop advertising without wiping the EIK. DULT unwanted-tracking prevention is not implemented either.
+- Only SECP160R1 (20-byte EID) is implemented. SECP256R1 needs a 32-byte EID and BLE 5 extended advertising, which this advertiser does not send. The 20-byte frame is the one older phones can report.
+- The committed `fmdn_eid_table.h` is a placeholder from EIK `0x11` repeated 32 times, start timestamp 0, 8 slots. That key is not registered to any account. Replace the header before expecting a lookup.
+- Frame type in this build is `0x41` because that is the frame this port was asked to send. The spec uses `0x40` for normal operation and `0x41` for unwanted tracking protection mode, and in that mode the MAC is supposed to stay fixed while bit 7 of the clear flags is set. This build rotates the MAC with the table and leaves the UTP flag clear. A phone may treat a `0x41` frame as an unwanted tracker.
 
 ### Debugging with strtt
 

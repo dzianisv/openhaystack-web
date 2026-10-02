@@ -24,6 +24,41 @@ uint8_t offline_finding_adv[] = {
 };
 size_t offline_finding_adv_len = sizeof(offline_finding_adv);
 
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+/* Find Hub Network accessory spec, Table 15 (160-bit curve).
+ * Octet 7 is 0x41 as required for this build. The spec uses 0x40 in normal
+ * mode and 0x41 in unwanted tracking protection mode. Hashed flags are
+ * clear_flags XOR SHA256(r)[-1]; clear_flags starts at 0.
+ * Length 0x19 = type + UUID + frame + 20-byte EID + hashed flags.
+ */
+#define FMDN_ADV_EID_OFFSET 8
+#define FMDN_ADV_FLAGS_OFFSET 28
+#define FMDN_FRAME_TYPE 0x41
+/* Spec numbers flag bits from the MSB: bit 0 is 0x80, bit 7 is 0x01. */
+#define FMDN_FLAG_BATTERY_MASK 0x06
+#define FMDN_FLAG_BATTERY_NORMAL 0x02
+#define FMDN_FLAG_BATTERY_LOW 0x04
+#define FMDN_FLAG_BATTERY_CRITICAL 0x06
+
+uint8_t fmdn_adv[] = {
+	0x02,       /* Length */
+	0x01,       /* Flags */
+	0x06,       /* LE General Discoverable | BR/EDR not supported */
+	0x19,       /* Length of service data AD */
+	0x16,       /* Service Data - 16-bit UUID */
+	0xAA, 0xFE, /* UUID 0xFEAA, little-endian */
+	FMDN_FRAME_TYPE,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00,       /* Hashed flags */
+};
+size_t fmdn_adv_len = sizeof(fmdn_adv);
+_Static_assert(sizeof(fmdn_adv) == 29, "FMDN advert must be 29 bytes");
+static uint8_t fmdn_clear_flags = 0;
+static uint8_t fmdn_flag_xor = 0;
+#endif
+
 
 // Set maximum transmit power for advertising or connection
 void ble_set_max_tx_power(void)
@@ -94,7 +129,7 @@ static void fill_adv_template_from_key(const char *key)
 /**
  * Set the Bluetooth MAC address.
  */
-static void ble_set_mac_address(uint8_t *addr)
+static void ble_set_mac_address(uint8_t *addr, uint8_t addr_type)
 {
     ble_gap_addr_t gap_addr;
     uint32_t err_code;
@@ -102,8 +137,8 @@ static void ble_set_mac_address(uint8_t *addr)
     // Copy the address to the gap_addr structure.
     memcpy(gap_addr.addr, addr, sizeof(gap_addr.addr));
 
-    // Set the address type. This can be either public or random static.
-    gap_addr.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+    // Apple path uses a static random address (two MSBs 11). FMDN uses NRPA.
+    gap_addr.addr_type = addr_type;
 
     // Set the address using the SoftDevice API.
     #if NRF_SDK_VERSION >= 15
@@ -184,7 +219,7 @@ uint8_t ble_set_advertisement_key(const char *key)
     set_addr_from_key(key);
    	fill_adv_template_from_key(key);
 
-	ble_set_mac_address(bt_addr);
+	ble_set_mac_address(bt_addr, BLE_GAP_ADDR_TYPE_RANDOM_STATIC);
 
     #if NRF_SDK_VERSION >= 15
         // Set advertising data
@@ -214,6 +249,69 @@ uint8_t ble_set_advertisement_key(const char *key)
 	return offline_finding_adv_len;
 }
 
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+#ifndef BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE
+#define BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE 0x03
+#endif
+
+/* NRPA from the EID. Two MSBs of the address must be 00. Not all-zero. */
+static void set_fmdn_addr_from_eid(const uint8_t *eid)
+{
+	bt_addr[5] = eid[0] & 0x3F;
+	bt_addr[4] = eid[1];
+	bt_addr[3] = eid[2];
+	bt_addr[2] = eid[3];
+	bt_addr[1] = eid[4];
+	bt_addr[0] = eid[5];
+	if ((bt_addr[0] | bt_addr[1] | bt_addr[2] | bt_addr[3] | bt_addr[4] | bt_addr[5]) == 0) {
+		bt_addr[0] = 0x01;
+	}
+}
+
+static void fill_fmdn_template(const uint8_t *eid, uint8_t flag_xor)
+{
+	fmdn_flag_xor = flag_xor;
+	memcpy(&fmdn_adv[FMDN_ADV_EID_OFFSET], eid, 20);
+	fmdn_adv[FMDN_ADV_FLAGS_OFFSET] = fmdn_clear_flags ^ fmdn_flag_xor;
+}
+
+uint8_t ble_set_advertisement_fmdn(const uint8_t eid[20], uint8_t flag_xor)
+{
+#if NRF_SDK_VERSION >= 15
+	if (adv_handle != BLE_GAP_ADV_SET_HANDLE_NOT_SET) {
+		int err_code = sd_ble_gap_adv_stop(adv_handle);
+		if (err_code != NRF_ERROR_INVALID_STATE)
+		{
+			APP_ERROR_CHECK(err_code);
+		}
+	}
+#endif
+
+	set_fmdn_addr_from_eid(eid);
+	fill_fmdn_template(eid, flag_xor);
+	ble_set_mac_address(bt_addr, BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE);
+
+#if NRF_SDK_VERSION >= 15
+	ble_gap_adv_data_t adv_data;
+	memset(&adv_data, 0, sizeof(adv_data));
+	adv_data.adv_data.p_data = fmdn_adv;
+	adv_data.adv_data.len = fmdn_adv_len;
+	adv_data.scan_rsp_data.p_data = NULL;
+	adv_data.scan_rsp_data.len = 0;
+	uint32_t err_code = sd_ble_gap_adv_set_configure(&adv_handle, &adv_data, &adv_params);
+	APP_ERROR_CHECK(err_code);
+	err_code = sd_ble_gap_adv_start(adv_handle, APP_BLE_CONN_CFG_TAG);
+	APP_ERROR_CHECK(err_code);
+#else
+	uint32_t err_code = sd_ble_gap_adv_data_set(fmdn_adv, fmdn_adv_len, NULL, 0);
+	APP_ERROR_CHECK(err_code);
+#endif
+
+	ble_set_max_tx_power();
+	return fmdn_adv_len;
+}
+#endif
+
 void _set_status(uint8_t status)
 {
 	offline_finding_adv[6] = status;
@@ -234,6 +332,17 @@ void set_battery(uint8_t battery_level)
     COMPAT_NRF_LOG_INFO("Battery level: %d, status: %d%d",
             battery_level, (status_flag >> 7) & 1, (status_flag >> 6) & 1);
 	_set_status(status_flag);
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+	fmdn_clear_flags &= (uint8_t)~FMDN_FLAG_BATTERY_MASK;
+	if (battery_level > 50) {
+		fmdn_clear_flags |= FMDN_FLAG_BATTERY_NORMAL;
+	} else if (battery_level > 30) {
+		fmdn_clear_flags |= FMDN_FLAG_BATTERY_LOW;
+	} else {
+		fmdn_clear_flags |= FMDN_FLAG_BATTERY_CRITICAL;
+	}
+	fmdn_adv[FMDN_ADV_FLAGS_OFFSET] = fmdn_clear_flags ^ fmdn_flag_xor;
+#endif
 }
 
 void set_status(uint8_t status)

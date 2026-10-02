@@ -56,6 +56,12 @@
 #include "main.h"
 #include "math.h"
 
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+#include "fmdn_eid_table.h"
+_Static_assert(FMDN_EID_COUNT > 0, "FMDN EID table is empty");
+_Static_assert(FMDN_EID_LEN == 20, "FMDN EID must be 20 bytes");
+#endif
+
 #if defined(BATTERY_LEVEL) && BATTERY_LEVEL == 1
 #if NRF_SDK_VERSION < 15
 #include "libraries/eddystone/es_battery_voltage.h"
@@ -72,10 +78,18 @@ static const char public_key[MAX_KEYS+1][28] = {
 
 int last_filled_index = -1;
 int current_index = 0;
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+int apple_last_filled_index = -1;
+static uint8_t dual_show_fmdn = 0;
+#endif
 
 // Define timer ID variables
 APP_TIMER_DEF(m_key_change_timer_id);
 APP_TIMER_DEF(m_blink_timer_id);
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+APP_TIMER_DEF(m_fmdn_flip_timer_id);
+#define FMDN_FLIP_INTERVAL COMPAT_APP_TIMER_TICKS(2000)
+#endif
 
 #define STATUS_LED_PIN 17
 #define BLINK_INTERVAL COMPAT_APP_TIMER_TICKS(60000)
@@ -90,7 +104,7 @@ static void blink_handler(void *p_ctx)
 // Timer interval definition (example: 1000 ms)
 #define TIMER_INTERVAL COMPAT_APP_TIMER_TICKS(KEY_ROTATION_INTERVAL * 1000)  // Timer interval in ticks (assuming 1 second interval)
 
-#if defined(RANDOM_ROTATE_KEYS) && RANDOM_ROTATE_KEYS == 1
+#if defined(RANDOM_ROTATE_KEYS) && RANDOM_ROTATE_KEYS == 1 && FIND_NETWORK == FIND_NETWORK_APPLE
 #include "nrf_drv_rng.h"
 #include "nrf_rng.h"
 
@@ -194,13 +208,14 @@ void update_battery_level(void)
 
 void set_and_advertise_next_key(void *p_context)
 {
-    #if defined(RANDOM_ROTATE_KEYS) && RANDOM_ROTATE_KEYS == 1
+#if FIND_NETWORK == FIND_NETWORK_APPLE && defined(RANDOM_ROTATE_KEYS) && RANDOM_ROTATE_KEYS == 1
         // Update key index for next advertisement...Back to zero if out of range
         current_index =  randmod(last_filled_index + 1);
-    #else
+#else
         // rotate to next key in the list modulo the last filled index
+        // FMDN walks the EID table in order so slot i stays tied to its window.
         current_index = (current_index + 1) % (last_filled_index + 1);
-    #endif
+#endif
 
     if (current_index < 0 || current_index > last_filled_index) {
         COMPAT_NRF_LOG_INFO("Invalid key index: %d", current_index);
@@ -211,10 +226,45 @@ void set_and_advertise_next_key(void *p_context)
         update_battery_level();
     #endif
 
-    // Set key to be advertised
+    // Set key to be advertised. APPLE is the original call.
+#if FIND_NETWORK == FIND_NETWORK_APPLE
     ble_set_advertisement_key(public_key[current_index]);
+#elif FIND_NETWORK == FIND_NETWORK_GOOGLE_FMDN
+    ble_set_advertisement_fmdn(fmdn_eid[current_index], fmdn_flag_xor[current_index]);
+#else
+    if (dual_show_fmdn) {
+        int fmdn_mod = FMDN_EID_COUNT;
+        int fi = current_index % fmdn_mod;
+        ble_set_advertisement_fmdn(fmdn_eid[fi], fmdn_flag_xor[fi]);
+    } else {
+        int apple_mod = apple_last_filled_index + 1;
+        if (apple_mod < 1) {
+            apple_mod = 1;
+        }
+        ble_set_advertisement_key(public_key[current_index % apple_mod]);
+    }
+#endif
     COMPAT_NRF_LOG_INFO("Rotating key: %d", current_index);
 }
+
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+static void fmdn_flip_handler(void *p_ctx)
+{
+    (void)p_ctx;
+    dual_show_fmdn ^= 1;
+    /* Re-advertise the current slot on the other network. Do not advance the index. */
+    if (dual_show_fmdn) {
+        int fi = current_index % FMDN_EID_COUNT;
+        ble_set_advertisement_fmdn(fmdn_eid[fi], fmdn_flag_xor[fi]);
+    } else {
+        int apple_mod = apple_last_filled_index + 1;
+        if (apple_mod < 1) {
+            apple_mod = 1;
+        }
+        ble_set_advertisement_key(public_key[current_index % apple_mod]);
+    }
+}
+#endif
 
 /**@brief Function for assert macro callback.
  *
@@ -379,12 +429,29 @@ int main(void)
         }
     }
 
-    // Precompute necessary values using integer arithmetic
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+    apple_last_filled_index = last_filled_index;
+#endif
+#if FIND_NETWORK == FIND_NETWORK_GOOGLE_FMDN
+    last_filled_index = FMDN_EID_COUNT - 1;
+#elif FIND_NETWORK == FIND_NETWORK_DUAL
+    if ((FMDN_EID_COUNT - 1) > last_filled_index) {
+        last_filled_index = FMDN_EID_COUNT - 1;
+    }
+#endif
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    COMPAT_NRF_LOG_INFO("[FMDN] EID table entries: %d", FMDN_EID_COUNT);
+#endif
+
+    // Precompute necessary values using integer arithmetic.
+    // One slot makes the product 0; don't divide by it.
     uint32_t rotation_interval_sec = last_filled_index * KEY_ROTATION_INTERVAL;
-    // Calculate hours scaled by 100 to preserve two decimal places
-    uint32_t rotation_interval_hours_scaled = (rotation_interval_sec * 100) / 3600;
-    // Calculate rotations per day scaled by 100
-    uint32_t rotation_per_day_scaled = (86400 * 100) / rotation_interval_sec;
+    uint32_t rotation_interval_hours_scaled = 0;
+    uint32_t rotation_per_day_scaled = 0;
+    if (rotation_interval_sec != 0) {
+        rotation_interval_hours_scaled = (rotation_interval_sec * 100) / 3600;
+        rotation_per_day_scaled = (86400 * 100) / rotation_interval_sec;
+    }
 
     // Log the information
     COMPAT_NRF_LOG_INFO("[KEYS] Last filled index: %d", last_filled_index);
@@ -436,8 +503,22 @@ int main(void)
 
     COMPAT_NRF_LOG_INFO("Starting advertising");
 
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+    /* Increment-first rotation would skip slot 0. Slot 0 is the tool's --start window. */
+    current_index = -1;
+#endif
+
     // Set the first key to be advertised
     set_and_advertise_next_key(NULL);
+
+#if FIND_NETWORK == FIND_NETWORK_DUAL
+    {
+        uint32_t err_code = app_timer_create(&m_fmdn_flip_timer_id, APP_TIMER_MODE_REPEATED, fmdn_flip_handler);
+        APP_ERROR_CHECK(err_code);
+        err_code = app_timer_start(m_fmdn_flip_timer_id, FMDN_FLIP_INTERVAL, NULL);
+        APP_ERROR_CHECK(err_code);
+    }
+#endif
 
     // Enter main loop.
     for (;;)
