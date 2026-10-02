@@ -3,9 +3,29 @@
 HAS_DEBUG ?= 0
 HAS_BATTERY ?= 0
 MAX_KEYS ?= 500
-KEY_ROTATION_INTERVAL ?= 3600
+# APPLE keeps the historical default. GOOGLE_FMDN and DUAL are the spec
+# window, 2^10 seconds. A different interval walks off the EID table.
+ifneq ($(filter GOOGLE_FMDN DUAL,$(FIND_NETWORK)),)
+  ifeq ($(origin KEY_ROTATION_INTERVAL),command line)
+    ifneq ($(KEY_ROTATION_INTERVAL),1024)
+      $(error FIND_NETWORK=$(FIND_NETWORK) requires KEY_ROTATION_INTERVAL=1024 (K=10); got $(KEY_ROTATION_INTERVAL))
+    endif
+  endif
+  KEY_ROTATION_INTERVAL := 1024
+else
+  KEY_ROTATION_INTERVAL ?= 3600
+endif
 ADVERTISING_INTERVAL ?= 1000
 RANDOM_ROTATE_KEYS ?= 1
+FIND_NETWORK ?= APPLE
+
+# Resolves FIND_NETWORK / KEY_ROTATION_INTERVAL without entering the chip
+# makefile. `make -n` still runs recipes that call $(MAKE), and those
+# include the nRF SDK, so this target is what CI can check with no SDK.
+.PHONY: check-fmdn-interval
+check-fmdn-interval:
+	echo KEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)
+	echo FIND_NETWORK=$(FIND_NETWORK)
 
 GNU_INSTALL_ROOT ?= $(CURDIR)/nrf-sdk/gcc-arm-none-eabi-6-2017-q2-update
 
@@ -25,6 +45,7 @@ help:
 	@echo "Targets:"
 	@echo "  all        - build all targets"
 	@echo "  clean      - clean all targets"
+	@echo "  check-fmdn-interval - print the resolved FMDN interval (no SDK)"
 
 # Define a recipe to build each target individually
 define build_target
@@ -42,6 +63,7 @@ $(1):
 		KEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL) \
 		ADVERTISING_INTERVAL=$(ADVERTISING_INTERVAL) \
 		RANDOM_ROTATE_KEYS=$(RANDOM_ROTATE_KEYS) \
+		FIND_NETWORK=$(FIND_NETWORK) \
 		$(1) bin_$(1)
 
 	mkdir -p ./release
@@ -54,6 +76,7 @@ $(1):
 	@echo "KEY_ROTATION_INTERVAL=$(KEY_ROTATION_INTERVAL)" >> ./release/$(1).txt
 	@echo "ADVERTISING_INTERVAL=$(ADVERTISING_INTERVAL)" >> ./release/$(1).txt
 	@echo "RANDOM_ROTATE_KEYS=$(RANDOM_ROTATE_KEYS)" >> ./release/$(1).txt
+	@echo "FIND_NETWORK=$(FIND_NETWORK)" >> ./release/$(1).txt
 
 
 $(1)-clean:

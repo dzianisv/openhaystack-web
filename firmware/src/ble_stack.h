@@ -43,7 +43,20 @@
 #define ADVERTISING_INTERVAL 1000
 #endif
 
+/* FIND_NETWORK is a compile-time int. Makefile.common passes 0/1/2.
+ * Default is Apple OpenHaystack, unchanged. */
+#define FIND_NETWORK_APPLE 0
+#define FIND_NETWORK_GOOGLE_FMDN 1
+#define FIND_NETWORK_DUAL 2
+#ifndef FIND_NETWORK
+#define FIND_NETWORK FIND_NETWORK_APPLE
+#endif
+
 void ble_advertising_init(void);
 void ble_set_max_tx_power(void);
 void set_battery(uint8_t battery_level);
 uint8_t ble_set_advertisement_key(const char *key);
+#if FIND_NETWORK != FIND_NETWORK_APPLE
+uint8_t ble_set_advertisement_fmdn(const uint8_t eid[20], uint8_t flag_xor);
+void ble_stop_advertising(void);
+#endif
